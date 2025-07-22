@@ -1,0 +1,10 @@
+.DS_Store
+.RData
+.Rhistory
+.Rproj.user/
+.slurmR/
+
+codex/
+visium/messy_scripts/
+visium/analysis_1.Rproj
+visium/01_CNV_calling/krimskrams/

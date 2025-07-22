@@ -1,0 +1,110 @@
+---
+title: "20250326_healthy_lymph_node_Visium_QC"
+author: "Tatjana"
+format: html
+editor: visual
+---
+
+## Healthy LN Visium dataset QC
+
+run some QC on the healthy lymph node Visium dataset obtained from the 10X Genomics website: <https://www.10xgenomics.com/datasets/human-lymph-node-1-standard-1-1-0>
+
+data was preprocessed running SpotClean using the script "02_healthy_ln_spotclean.r".
+
+```{r}
+# load libraries
+library(qs)
+library(Seurat)
+library(tidyverse)
+library(patchwork)
+library(Matrix)
+```
+
+### Load Dataset
+
+Lymph node Seurat object post-"SpotClean"
+
+```{r}
+healthy_ln_sc = qread("/g/saka/Tatjana/visium/V1_healthy_human_lymph_node/healthy_ln_spotcleaned_2.rds")
+
+# also load in healthy lymph node pre-spotclean to compare it to
+healthy_ln = Load10X_Spatial(
+  data.dir='/g/saka/Tatjana/visium/V1_healthy_human_lymph_node/outs',
+  filename = "filtered_feature_bc_matrix.h5",
+  assay = "Visium"
+  )
+```
+
+```{r}
+# make SpatialFeaturePlot showing nCounts and nFeatures per spot
+plot1 = VlnPlot(healthy_ln_sc, features = "nCount_Spatial", pt.size = 0.1) + 
+  NoLegend() + 
+  coord_cartesian(ylim = common_ylim) +
+  ggtitle("Healthy LN")
+
+
+```
+
+```{r}
+# now, plotting counts per Visium spot - comparing raw dataset vs. post running SpotClean
+plot2 = SpatialFeaturePlot(healthy_ln_raw, features = "nCount_Visium") + theme(legend.position = "right")
+plot3 = SpatialFeaturePlot(healthy_ln_sc, features = "nCount_Spatial") + theme(legend.position = "right")
+wrap_plots(plot2, plot3)
+```
+
+```{r}
+# checking how much has changed after running SpotClean
+summary(healthy_ln_sc$nCount_Spatial - healthy_ln$nCount_Visium)
+```
+
+Now, proceed with the "spotcleaned" version of the healthy count matrix, apply the quality control cutoffs we had set and run normalization (scaling & transformation). Apply quality control cutoffs: exclude spots with \< 100 features, \< 350 UMIs.
+
+```{r}
+healthy_ln_sc_subset = subset(
+  healthy_ln_sc,
+  subset = nFeature_Spatial >= 100 & nCount_Spatial >= 350
+)
+```
+
+```{r}
+SpatialFeaturePlot(healthy_ln_sc, features="nCount_Spatial")
+```
+
+```{r}
+# check how many visium spots were actually removed
+# Before filtering
+n_before <- ncol(healthy_ln_sc)
+# After filtering
+n_after <- ncol(healthy_ln_sc_subset)
+
+n_before
+n_after
+```
+
+```{r}
+# extract counts layer as a matrix 
+counts_mat <- as(GetAssayData(healthy_ln_sc_subset, assay = "Spatial", slot = "counts"), "dgCMatrix")
+
+# put iit back as sparse matrix
+healthy_ln_sc_subset<- SetAssayData(healthy_ln_sc_subset, assay = "Spatial", slot = "counts", new.data = counts_mat)
+
+```
+
+```{r}
+
+healthy_ln_sc_subset <- NormalizeData(healthy_ln_sc_subset, normalization.method = "LogNormalize")
+
+```
+
+```{r}
+healthy_ln_sc_subset <- SCTransform(healthy_ln_sc_subset, assay = "Spatial")
+```
+
+Now that we excluded low quality spots and log-normalized as well as SC-transformed our counts, save Seurat object.
+
+```{r}
+qsave(
+  healthy_ln_sc_subset, 
+  "/g/saka/Tatjana/visium/V1_healthy_human_lymph_node/healthy_ln_spotcleaned2_QC.qs"
+  )
+```

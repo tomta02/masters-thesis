@@ -1,0 +1,168 @@
+---
+title: "siCNV_downstream"
+author: "Tatjana Tomek"
+format: html
+editor: visual
+---
+
+## siCNV downstream analysis
+
+Using output from "03_siCNV_output_reformating" to visualize localization of CNVs on the visium spots.
+
+```{r}
+# load libraries
+library(Seurat)
+library(SeuratObject)
+library(tidyverse)
+library(qs)
+library(patchwork)
+library(ggplot2)
+```
+
+```{r}
+# load Visium objects Kristy
+visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_10_visium_flt.qs", nthreads = 32)
+```
+
+```{r}
+# extract Visium objects of interest (LN0438), delete whole visiumlist
+pat_id = "LN0193"
+s_indices = grep(pat_id, names(visiumlist))
+data = visiumlist[s_indices]
+rm(visiumlist)
+```
+
+As a first check, plot the visium objects alongside their spatial domain annotation:
+
+```{r}
+# first plot: look at preliminary annotation
+library(ggplot2)
+library(patchwork)
+
+# Define your custom colors
+custom_colors <- c(
+  "interfollicular" = "yellow",
+  "cFL_diffuse" = "turquoise",
+  "cFL_follicular" = "grey",
+  "FLBL" = "pink"
+)
+
+# Apply colors in each plot
+plots = lapply(seq_along(data), function(i) {
+  SpatialPlot(data[[i]], group.by = "prelim_anno",
+                     image.scale = "hires",
+                     image.alpha = 0.2,
+                     #crop = FALSE,
+                     pt.size.factor = 2) +
+    scale_fill_manual(values = custom_colors) +
+    #ggtitle(names(data)[i]) +
+    theme(plot.title = element_text(size = 10))
+})
+
+# Combine plots
+combined_plot = (plots[[1]] | plots[[2]]) /
+                (plots[[3]] | plots[[4]]) 
+
+
+# overall title
+final = combined_plot + plot_annotation(title = "preliminary spatial domain annotation - LN0193")
+final
+ggsave(
+  "/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/all_pat_siCNV_results_per_spat_annot/20250617_LN0193_cutoff_0.1_cluster_by_groups_TRUE_analysis_mode_samples_HMM_report_by_subcluster_denoise_TRUE/analysis/spatial_domain_annot.png", final, width = 7, height = 4, dpi = 400)
+```
+
+```{r}
+# load CNV annotation list
+cnv_annot_LN0438 = qread("/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/03_siCNV_LN0438/20250423_cutoff_0.1_cluster_by_groups_TRUE_analysis_mode_samples_HMM_report_by_subcluster_denoise_TRUE/analysis/cnv_probabilities/cnv_probabilities.rds")
+```
+
+Note: each element of the "cnv_annot_LN0438" list corresponds to 1 CNV, as seen in names(cnvannot). For each cnv/each list element: matrix with barcodes, probability of CNV being detected, and state (del/amp).
+
+Now: for any given CNV in the list, plot the barcodes on top of the Visium tissue slides if bc has a probability \> 0.5.**\
+**As each cnv matrix of "cnv_annot_LN0438" is going to contain barcodes of all 6 Seurat objects belonging to that patient, need to parse through all barcodes of the matrix and assign it to the correct Visium seurat object.
+
+```{r}
+# plot Visium data with CNV barcode information, try for 1 CNV matrix first
+testmtx = cnv_annot_LN0438[[18]]
+names(cnv_annot_LN0438[18])
+```
+
+```{r}
+split_cnvmtx = function(cnv_mat, list_of_seu) {
+  # make empty list for each seurat object. Will be filled with matching bc of each seurat object
+  cnv_info_list = vector("list", length(list_of_seu))
+  names(cnv_info_list) <- names(list_of_seu)
+
+  # loop over each row in cnv_mat
+  for (i in seq_len(nrow(cnv_mat))) {
+    barcode = rownames(cnv_mat)[i]
+    row_data = cnv_mat[i, , drop = FALSE]
+    
+    for (j in seq_along(list_of_seu)) {
+      if (barcode %in% colnames(list_of_seu[[j]])) {
+        if (is.null(cnv_info_list[[j]])) {
+          cnv_info_list[[j]] = row_data
+        } else {
+          cnv_info_list[[j]] = rbind(cnv_info_list[[j]], row_data)
+        }
+        break  # Stop after barcode has been found in a seurat object, move to next bc
+      }
+    }
+  }
+  
+  return(cnv_info_list)
+}
+
+```
+
+test out above function:
+
+```{r}
+cnv_list_per_seu = split_cnvmtx(testmtx, data)
+```
+
+```{r}
+cnv_to_metadata = function(list_of_seu, cnv_info_list) {
+  for (j in seq_along(list_of_seu)) {
+    cnv_data = cnv_info_list[[j]]
+    if (!is.null(cnv_data)) {
+      common_barcodes = intersect(rownames(cnv_data), colnames(list_of_seu[[j]]))
+      list_of_seu[[j]]@meta.data[common_barcodes, "CNV_probability"] = cnv_data[common_barcodes, "probability"]
+      list_of_seu[[j]]@meta.data[common_barcodes, "CNV_state"] = cnv_data[common_barcodes, "state"]
+    }
+  }
+
+  return(list_of_seu)
+}
+```
+
+```{r}
+data = cnv_to_metadata(data, cnv_list_per_seu)
+```
+
+Now, plot all the Visium patient samples:
+
+```{r}
+plots2 = lapply(seq_along(data), function(i) {
+  seu = data[[i]]
+  
+  high_cnv = subset(seu, subset = CNV_probability > 0.5)
+  
+  SpatialPlot(high_cnv,
+              group.by = "CNV_state",
+              image.scale = "hires",
+              image.alpha = 0.8,
+              pt.size.factor = 2) +
+    ggtitle(names(data)[i]) +
+    theme(plot.title = element_text(size = 10))
+})
+
+combined_plot2 = (plots2[[1]] | plots2[[2]] | plots2[[3]]) /
+                 (plots2[[4]] | plots2[[5]] | plots2[[6]])
+
+# title, plot
+final2 <- combined_plot2 + plot_annotation(title = "chr1-region_47, probability > 0.5")
+plot(final2)
+#ggsave(
+  #"/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/03_siCNV_LN0438/20250423_cutoff_0.1_cluster_by_groups_TRUE_analysis_mode_samples_HMM_report_by_subcluster_denoise_TRUE/analysis/cnv_example.png", final2, width = 9, height = 5)
+```

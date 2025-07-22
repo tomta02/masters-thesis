@@ -1,0 +1,117 @@
+---
+title: "01_healthy_lymphn_inspection_GC_annot"
+author: "Tatjana Tomek"
+format: html
+editor: visual
+bibliography: references.bib
+---
+
+## 10X healthy lymph node dataset inspection & annotation of germinal center regions
+
+As a healthy control dataset for the Visium lymphoma cancer patient samples, we are using a healthy lymph node Visium sample [downloaded from 10X Genomics.](https://www.10xgenomics.com/datasets/human-lymph-node-1-standard-1-1-0)
+
+Inspect data and annotate the visium spots localizing to germinal centers regions
+
+```{r}
+# load libraries
+library(Seurat)
+library(ggplot2)
+library(patchwork)
+```
+
+```{r}
+# make Seurat object from healthy lymph node dataset 
+healthy_lymph = Load10X_Spatial(
+  data.dir='/g/saka/Tatjana/visium/V1_healthy_human_lymph_node/outs',
+  filename = "filtered_feature_bc_matrix.h5",
+  assay = "Visium"
+  )
+
+# changing active.ident to something meaningful ("healthy lymphnode")
+Idents(healthy_lymph) = "healthy_LN"
+
+```
+
+looking at tissue morphology:
+
+```{r}
+he_img = SpatialPlot(
+  healthy_lymph, 
+  alpha = 0
+  )
+
+he_img
+
+```
+
+### Annotating germinal center regions
+
+As follicular lymphoma originates from germinal center (GC) derived B cells, we want to compare our cancer patient data only to the healthy Visium spots localizing to the GC.\
+Note: the cell2location paper [@kleshchevnikov2022] GitHub repository comes with manual [pathologist annotation](#0) of the germinal center regions of the 10X healthy lymph visium dataset.\
+Instead of asking our collaborating pathologist, use the annotation information provided with the paper for now
+
+```{r}
+# import annotation file downloaded from link above. 
+# GitHub repo: "cell2location_paper"
+# path fo file on repo: cell2location_paper/notebooks/selected_results/lymph_nodes_analysis/manual_GC_annot.csv
+
+annot_file = read.csv("/g/saka/Tatjana/visium/V1_healthy_human_lymph_node/manual_GC_annot.csv") 
+
+# modify to only retain the Visium spots that are annotated as "GC"
+# and rename "GC" colum to "Histology"
+gc_annot = annot_file[annot_file$GC == "GC", ]
+colnames(gc_annot)[which(names(gc_annot) == "GC")] <- "Histology"
+
+# save final annotation file
+write.table(
+  gc_annot, 
+  "V1_Human_Lymph_Node/gc_annot_final.csv", 
+  sep = ",",
+  quote = FALSE, 
+  row.names = FALSE
+  )
+
+```
+
+looking whether spots annotated as "GC" actually localize to the germinal center based on tissue morphology:\
+
+```{r}
+gc_annot_plot = SpatialPlot(
+  healthy_lymph, 
+  cells.highlight = gc_annot,
+  alpha = 1,
+  #image.alpha = 0
+  )
+
+gc_annot_plot
+#ggsave("./healthy_ln_gcs.png", plot = gc_annot_plot)
+# looks good imo, but ask Kristy & Val for their opinion
+```
+
+Next, do some basic visualization of gene expression info. Quality control will be done in separate script, as we will apply [SpotClean](#0) before to "decontaminate" Visium dataset from potential read swapping effects common in spatial transcriptomics datasets.
+
+```{r}
+# first, visualize gene counts per Visium spot ("nCount_Visium")
+plot1 = VlnPlot(
+  healthy_lymph, 
+  layer = "counts",
+  features = "nCount_Visium",
+  pt.size = 0.3
+  ) + NoLegend() + coord_flip()
+
+plot1
+
+```
+
+```{r}
+plot2 = SpatialFeaturePlot(
+  healthy_lymph, 
+  features = "nCount_Visium",
+  alpha = 0.8
+  ) + theme(
+    legend.position = "right"
+    )
+
+plot2
+# small, bottom left handside region looks detached, but otherwise seems ok
+```

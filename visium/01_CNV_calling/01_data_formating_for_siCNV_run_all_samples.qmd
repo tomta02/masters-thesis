@@ -1,0 +1,230 @@
+---
+title: "20250526_all_sample_prepro_siCNV"
+author: "Tatjana Tomek"
+format: html
+editor: visual
+---
+
+## CNV analysis - data formatting
+
+Preprocessing of the Visium data to bring it into shape for input into siCNV.\
+All patient samples together
+
+```{r}
+# load libraries
+library(qs)
+library(Seurat)
+library(SeuratObject)
+library(tidyverse)
+library(infercnv)
+library(phylogram)
+library(ape)
+library(hdf5r)
+library(SpatialInferCNV)
+library(Matrix)
+```
+
+First, load list of Visium objects (after QC)
+
+```{r}
+visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_10_visium_flt.qs", nthreads = 32)
+```
+
+Next, import healthy lymph node count matrix & annotation file.
+
+```{r}
+healthy_ln_mtx <- qread(
+  "/g/saka/Tatjana/visium/V1_healthy_human_lymph_node/healthy_ln_sc2_QC_HGNCgenenames.qs",
+  nthreads = 32
+  )
+
+healthy_annot = read.csv('/g/saka/Tatjana/visium/V1_healthy_human_lymph_node/gc_annot_final.csv')
+```
+
+```{r}
+# Full sample names is saved as "names(visiumlist)". Get patient IDs by extracting only the part before first underscore, keep only the unique ones (as we have multiple samples from the same patient)
+pat_ids = sub("_.*", "", names(visiumlist)) %>% unique()
+```
+
+Now add all the functions that I need to do for an individual sample - tomorrow expand it to do it for all samples at once:
+
+"master_list": list of 6 lists (1 "sublist" per patient), each element (each "sublist") = list of seurat objects belonging to that patient.
+
+```{r}
+master_list = list()
+
+for (id in pat_ids) {
+  s_indices = grep(id, names(visiumlist))
+  samples = visiumlist[s_indices]
+  master_list[[id]] = samples
+}
+```
+
+### 01. create annotation files
+
+Create annotation files (df w. 2 columns: barcodes, spatial domain annotation) for each set of patient samples.
+
+```{r}
+# write func to generate histological annotations 
+create_siCNV_annot <- function(seu) {
+  # retrieve barcodes & "alias" vector from seurat obj meta.data
+  Barcode <- colnames(seu)
+  Histology <- as.character(seu@meta.data$prelim_anno)
+  
+  # join them
+  result_matrix <- cbind(Barcode, Histology)
+  result_df <- as.data.frame(result_matrix)
+  
+  return(result_df)
+}
+```
+
+```{r}
+# now create list of annotations
+annot_list = list()
+
+for (i in (seq_along(master_list))) {
+  id = names(master_list)[i]
+  #print(master_list[i])
+  sublist = master_list[[i]]
+  sample_annotations = lapply(sublist, create_siCNV_annot)
+  annot_list[[id]] = bind_rows(sample_annotations)
+}
+```
+
+Next step:
+
+### 02. generate final count matrices
+
+As siCNV expects singular count matrix of control + test samples, generate count matrix per patient + add healthy lymph node count data to each of these matrices
+
+```{r}
+# function to create a joint count matrix from the objects in our Visium list
+# takes a list of seurat objects (patient samples) and our healthy control seurat object, and concatenates the count matrices while only keeping genes that are present in all of them
+
+joint_count_mtx = function(list_of_seu, healthy_seu) {
+  
+  # first, extract count mtx from healthy lymph node seurat; & each of seurat objects individually
+  healthy_count_mtx = GetAssayData(
+    object = healthy_seu, 
+    assay = "Spatial", 
+    layer = "counts"
+    )
+  
+  patientcountmtx_list <- lapply(
+    list_of_seu, 
+    function(seu) {GetAssayData(
+      object = seu, 
+      assay = "Visium", 
+      layer = "counts")})
+  
+  # now, need to find which rownames (i.e which genes) ALL of the data.frames
+  # have in common, i.e. the data.frames saved in "patientcounts_list" and the 
+  # "healthy_count_mtx"
+  
+  # first, get the genes (i.e. rownames) from all data frames in patientcounts_list
+  rownames_list <- lapply(patientcountmtx_list, rownames)
+
+  # next, add rownames from the healthy_count_mtx to rownames_list
+  rownames_list <- c(rownames_list, list(rownames(healthy_count_mtx)))
+
+  # use Reduce to intersect all rownames in rownames_list, to only keep the ones that
+  # are present in all
+  common_genes <- Reduce(intersect, rownames_list)
+
+  # filter each data frame in patientcountmtx_list to keep only the common genes
+  patientcountmtx_list_filtered <- lapply(
+    patientcountmtx_list, 
+    function(df) df[common_genes, , drop= FALSE])
+  
+  # filter healthy_count_mtx to keep only the common genes
+  healthy_count_mtx_filtered <- healthy_count_mtx[common_genes, , drop = FALSE]
+  #str(healthy_count_mtx_filtered)
+  
+  # convert all of the matrices to dfs
+  patientcountmtx_list_filtered <- lapply(
+    patientcountmtx_list_filtered, 
+    function(i) {as.data.frame(i)})
+  
+  healthy_count_df_filtered <- as.data.frame(healthy_count_mtx_filtered)
+  
+  # LASTLY: cbind all of the data.frames (i.e. along "Barcode" axis) to have one big df
+  final_count_mtx <- bind_cols(patientcountmtx_list_filtered, healthy_count_df_filtered )
+
+}
+```
+
+Now applying this function to all our patient samples in "master_list":
+
+```{r}
+joint_mtx_list <- list()
+
+for (id in names(master_list)) {
+  sublist <- master_list[[id]]
+  joint_mtx_list[[id]] <- joint_count_mtx(sublist, healthy_ln_mtx)
+}
+
+```
+
+### 03. finalize annotation files
+
+Each of our annotation files saved in the list "annot_list" needs to be joined with "healthy_annot" in order to have the finalized annotation files.
+
+```{r}
+# join "p11" and "healthy" annotations
+#joined_annot <- rbind(healthy_annot, sample_annotations)
+```
+
+```{r}
+joined_annot_list = list()
+
+for (id in names(annot_list)) {
+  subannot = annot_list[[id]]
+  joined_annot_list[[id]] = rbind(healthy_annot, subannot)
+}
+```
+
+Next, subset our count matrices by the barcodes that are in the joined annotation files:
+
+```{r}
+tcntmt = joint_mtx_list[[1]]
+tannot = joined_annot_list[[1]]
+```
+
+```{r}
+final_subs_cntmtx_list = list()
+
+for (id in names(joined_annot_list)) {
+  subannot = joined_annot_list[[id]]
+  submt = joint_mtx_list[[id]]
+  
+  final_subs_cntmtx_list[[id]] = submt[, colnames(submt) %in% subannot$Barcode]
+  final_subs_cntmtx_list[[id]] = rownames_to_column(final_subs_cntmtx_list[[id]], "Genes")
+}
+
+```
+
+Now, save each matrix and each annot file individually:
+
+```{r}
+for (id in names(final_subs_cntmtx_list)) {
+  mtx = final_subs_cntmtx_list[[id]]
+  fname <- paste0("01_CNV_analysis/all_pat_countmat_and_annot/", id, "_countmtx.tsv")
+  write.table(mtx, 
+              fname,
+              sep = "\t", 
+              row.names = FALSE)
+}
+```
+
+```{r}
+for (id in names(joined_annot_list)) {
+  mtx = joined_annot_list[[id]]
+  fname <- paste0("01_CNV_analysis/all_pat_countmat_and_annot/", id, "_annot.tsv")
+  write.table(mtx, 
+              fname,
+              sep = "\t",
+              col.names = FALSE,
+              row.names = FALSE)
+}
+```
