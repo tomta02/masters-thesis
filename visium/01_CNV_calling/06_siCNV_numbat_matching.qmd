@@ -4,9 +4,9 @@ format: html
 editor: visual
 ---
 
-## Numbat output investigation
+## Comparison of CNV calls - inferCNV vs. Numbat
 
-Investigating the numbat output files that Kristy had sent me - how to load, wrangle, and intepret numbat output data generated from the 10x multiome patient data
+For each patient, we have single cell RNAseq data from their tumor, as well as visium spatial transcriptomics. Copy number variations were called both on the single cell data (done by Kristy before i joined, as well as on the 10x Visium data (done by me) - comparing how well these called CNVs match
 
 ```{r}
 library(qs)
@@ -16,63 +16,72 @@ library(tidyverse)
 library(GenomicRanges)
 ```
 
-Now, loading the numbat output data from Kristy and extracting the genomic CNV data:
+loading the numbat output data from Kristy and extracting the genomic CNV data:
 
 ```{r}
-# loading list of numbat objects (CNV calling on single cell data), processed by Kristy before I joined
-numbatlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/03_03_numbat_list.qs")
+# loading list of numbat objects (CNV calling on single cell data)
+numbatlist = qread(
+  "/g/saka/Kristy/projects/composite/analysis/rdata/03_03_numbat_list.qs", 
+  nthreads = 32)
 ```
 
 ```{r}
-# loading genotypes that were significant
+# loading genotypes that were significant for numbar
 gt = qread("/g/saka/Kristy/projects/composite/analysis/rdata/00_numbat_gt_forTatjana.qs")
 ```
 
 ```{r}
-patlist = list()
+# extract cnv calls from data
+nb_cnv_list = list()
 
 for (name in names(numbatlist)) {
   pat = numbatlist[[name]][["segs_consensus"]]
-  patlist[[name]] = pat
+  nb_cnv_list[[name]] = pat
 }
-
 ```
 
 ```{r}
-# Set the base directory containing the patient subdirectories
-base_dir <- "/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/all_pat_per_spat_domain"
+# subset nb_cnv_list by the genotypes that were significant
+nb_cnv_list_subs = mapply(function(patient, genot) {
+  patient[patient$seg_cons %in% genot, ]
+}, nb_cnv_list, gt, SIMPLIFY = FALSE)
 
-# List all subdirectories in the base_dir
-subdirs <- list.dirs(base_dir, recursive = FALSE)
+```
 
-# Initialize results list
-sicnv_results <- list()
+Loading in the inferCNV output data:
 
-# Loop through each patient name in patlist
-for (name in names(numbatlist)) {
+```{r}
+base_dir = "/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV/all_pat_analyzed_per_spat_domain"
+# get all subdirs (patient names)
+subdirs = list.dirs(base_dir, recursive = FALSE)
+
+# make results list
+sicnv_results = list()
+
+# loop through all patient names in nb_cnv_list_subs 
+for (name in names(nb_cnv_list_subs)) {
   # Find the subdirectory that contains the patient name3
-  matching_dirs <- grep(paste0("_", name, "_"), subdirs, value = TRUE)
+  matching_dirs = grep(paste0("_", name, "_"), subdirs, value = TRUE)
   
   if (length(matching_dirs) == 1) {
-    subdir <- matching_dirs[1]
+    subdir = matching_dirs[1]
     
-    # Find the file that ends with '0.5.pred_cnv_regions.dat' in the subdir
-    files <- list.files(subdir, pattern = "0\\.5\\.pred_cnv_regions\\.dat$", full.names = TRUE)
+    # in the subdir, get file that contains the string "0.5.pred_cnv_regions.dat
+    files = list.files(subdir, pattern = "0\\.5\\.pred_cnv_regions\\.dat$", full.names = TRUE)
     
     if (length(files) == 1) {
-      # Read the file and store it in the list
-      sicnv_results[[name]] <- read.table(files[1], header = TRUE)
+      sicnv_results[[name]] = read.table(files[1], header = TRUE)
     } else {
-      warning(paste("No unique matching file found for", name, "in", subdir))
+      warning(paste("no unique matching file found for", name, "in", subdir))
     }
   } else if (length(matching_dirs) == 0) {
-    warning(paste("No directory found for", name))
+    warning(paste("no dir found for: ", name))
   } else {
-    warning(paste("Multiple directories found for", name, "- using first match"))
-    subdir <- matching_dirs[1]
-    files <- list.files(subdir, pattern = "0\\.5\\.pred_cnv_regions\\.dat$", full.names = TRUE)
+    warning(paste("multiple dirs found for ", name, ", use 1st match"))
+    subdir = matching_dirs[1]
+    files = list.files(subdir, pattern = "0\\.5\\.pred_cnv_regions\\.dat$", full.names = TRUE)
     if (length(files) >= 1) {
-      sicnv_results[[name]] <- read.table(files[1], header = TRUE)
+      sicnv_results[[name]] = read.table(files[1], header = TRUE)
     }
   }
 }
@@ -84,29 +93,29 @@ As the output of Numbat and siCNV is slightly different, we need to write a func
 The following things need to be done:\
 1.) check if all cols that we need are there.\
 2.) remove the "chr" from the chromosome info ("chr") column: instead of "chr1", "chr2", ... only the integer number should remain.\
-3.) the "cell_group_name" is really complex ("cFL_diffuse.cFL_diffuse_s1"), therefore, remove everything after the 1st dot.\
+3.) the "cell_group_name" is really nested ("cFL_diffuse.cFL_diffuse_s1"), therefore, remove everything (including &) after the 1st dot.\
 4.) remove any columns where the "state" = 3 (is neutral, we care about amp (4,5,6) or del (1,2)\
-4.) to match the numbat output "amp" & "del", we need to convert the reported siCNV copy number states (which are numbers ranging from 1-6).
+4.) to match the numbat output (which just gives the strings "amp" & "del"), we need to convert the reported siCNV copy number states (which are numbers ranging from 1-6).
 
 ```{r}
-siCNV_out_mod <- function(df) {
-  ## do the columns exist?
-  required_cols <- c("state", "chr", "start", "end")
+siCNV_out_mod = function(df) {
+  # do the columns exist?
+  required_cols = c("state", "chr", "start", "end")
   if (!all(required_cols %in% colnames(df))) {
     stop("input data frame must contain: state, chr, start, end")
   }
   
-  ## remove 'chr'from 'chr' column
-  df$chr <- as.numeric(sub("chr", "", df$chr))
+  # remove 'chr'from 'chr' column
+  df$chr = as.numeric(sub("chr", "", df$chr))
   
-  ## cell_group_name: rm evrything including & after the first dot
-  df$cell_group_name <- sub("\\..*", "", df$cell_group_name)
+  # cell_group_name: rm evrything including & after the first dot
+  df$cell_group_name = sub("\\..*", "", df$cell_group_name)
   
-  ## remove cols where state = 3 (i.e. neutral)
-  df <- df[df$state != 3, ]
+  # remove cols where state = 3 (i.e. neutral)
+  df = df[df$state != 3, ]
   
-  ## make'state_cat' colum, based on 'state' col
-  df$cnv_state <- ifelse(df$state %in% c(1, 2), "del", 
+  # make'state_cat' colum, based on 'state' col
+  df$cnv_state = ifelse(df$state %in% c(1, 2), "del", 
                           ifelse(df$state %in% c(4, 5, 6), "amp", NA))
   
   return(df)
@@ -123,82 +132,82 @@ sicnv_results = map(sicnv_results, siCNV_out_mod)
 As a next step, we apply the GenomicRanges::reduce function to the siCNV output, as often the same CNV was called in different disease entities, to reduce the occurence of multiple CNVs to one.
 
 ```{r}
-# Assume sicnv_results is a list of data.frames or tibbles, each with 'start' and 'end' columns
-cnvranges <- lapply(sicnv_results, function(CNV_reg) {
-  IRanges(start = CNV_reg$start, end = CNV_reg$end)
+infcnv_gr = lapply(sicnv_results, function(CNV_reg) {
+  GRanges(
+    seqnames = CNV_reg$chr,
+    ranges = IRanges(start = CNV_reg$start, end = CNV_reg$end),
+    state = CNV_reg$state,
+    cnv_state = CNV_reg$cnv_state,
+    cnv_name = CNV_reg$cnv_name,
+    cell_group_name = CNV_reg$cell_group_name
+  )
 })
 
 ```
 
 ```{r}
-# 1. build IRanges object
-cnvranges = IRanges(
-  start = CNV_reg$start, 
-  end = CNV_reg$end,
+# 2. reduce cnvranges, but keep track of metadata: cell_group_name & cnv_name)
+infcnv_grr = lapply(infcnv_gr, function(gr_sample) {
+  # reduce each sample individually
+  gr_sample_reduced = reduce(gr_sample, with.revmap = TRUE)
+
+  #save metadata fromm original ranges
+  mcols(gr_sample_reduced) = do.call(rbind, lapply(mcols(gr_sample_reduced)$revmap, function(i) {
+    data.frame(
+      cnv_name = paste(mcols(gr_sample)$cnv_name[i], collapse = ","),
+      state = paste(mcols(gr_sample)$state[i], collapse = ","),
+      cell_group_name = paste(mcols(gr_sample)$cell_group_name[i], collapse = ","),
+      cnv_state = paste(mcols(gr_sample)$cnv_state[i], collapse = ",")
+    )
+  }))
+
+  gr_sample_reduced 
+})
+
+```
+
+As a next step, convert the reduced GRanges object (infcnv_grr) to a data.frame, so we can make comparisons between the numbat output data and the infcnv_grr
+
+```{r}
+infcnv_grr_df_list = lapply(infcnv_grr, function(gr_sample) {
+  data.frame(
+    chr = as.vector(seqnames(gr_sample)),
+    start = start(gr_sample),
+    end = end(gr_sample),
+    width = width(gr_sample),
+    cnv_name = mcols(gr_sample)$cnv_name,
+    state = mcols(gr_sample)$state,
+    cell_group_name = mcols(gr_sample)$cell_group_name,
+    cnv_state = mcols(gr_sample)$cnv_state
   )
+})
+
 ```
 
 ```{r}
-# 2. construct GRanges object
-gr = GRanges(
-  ranges = cnvranges,
-  state = CNV_reg$state,
-  cnv_state = CNV_reg$cnv_state,
-  seqnames = CNV_reg$chr,
-  cnv_name = CNV_reg$cnv_name,
-  cell_group_name = CNV_reg$cell_group_name
-  )
-```
-
-```{r}
-# 2. reduce cnvranges, but keep track of metadata (cell_group_name & cnv_name)
-grr = reduce(gr, with.revmap = TRUE)
-
-mcols(grr) <- do.call(rbind,
-                      lapply(mcols(grr)$revmap, function(i) {
-                        data.frame(
-                          cnv_name = paste(mcols(gr)$cnv_name[ i ], collapse = ","),
-                          state = paste(mcols(gr)$state[ i ], collapse = ","),
-                          cell_group_name = paste(mcols(gr)$cell_group_name[ i ], collapse = 
-                          ","),
-                          cnv_state = paste(mcols(gr)$cnv_state[ i ], collapse = ","))
-                        }))
-```
-
-As a next step, convert the reduced GRanges object (grr) to a data.frame, so we can make comparisons between the numbat output data and the grr
-
-```{r}
-grr_df = data.frame(
-  chr = as.vector(grr@seqnames),
-  start = grr@ranges@start,
-  end = ((grr@ranges@start + grr@ranges@width) - 1),
-  width = grr@ranges@width, 
-  cnv_name = grr$cnv_name,
-  state = grr$state,
-  cell_group_name = grr$cell_group_name,
-  cnv_state = grr$cnv_state
-)
-```
-
-```{r}
-# check if all cnv_states are the same overall (i.e. if state ("del,del,del") i.e. deletion in 3 spatial domains, result will be "del" if state matches, and "NA" in case state differs (e.g. ("amp,del,amp")))
-grr_df$cnv_state_clean <- sapply(strsplit(grr_df$cnv_state, ","), function(x) {
+# in original infcnv_grr_df_list, each "cnv_state" is there multipe times, separated by comma: e.g. "amp,amp,amp" if the cnv was presen in 3 spatial domains.
+# make sure that all of them are the same state (should be)
+infcnv_grr_df_list = lapply(infcnv_grr_df_list, function(df) {
+  df$cnv_state_clean = sapply(strsplit(df$cnv_state, ","), function(x) {
   if (length(unique(x)) == 1) x[1] else NA
+  })
+  df
 })
-
 ```
 
-Before we proceed with comparison of inferCNV and numbat results, will modify the numbat results slightly to only keep the CNVs that we can also detect in the inferCNV data (i.e, we keep "amp" & "del", but we remove "loh" & "neu").
+Before we proceed with comparison of inferCNV and numbat results, will modify the numbat results slightly to only keep the CNVs that we can also detect in the inferCNV data (i.e, we keep "amp" & "del", but we remove "loh" & "neu") - since we cannot detect copy neutral cnvs or loss of heterozygosity with inferCNV.
 
 ```{r}
-LN0438_segs_subs <-LN0438_segs[LN0438_segs$cnv_states %in% c("del", "amp"), ]
+nb_cnv_list_subs_delamp = lapply(nb_cnv_list_subs, function(pt) {
+  pt = pt[pt$cnv_states %in% c("del", "amp"), ]
+})
 ```
 
 Now, we need to compare Numbat output to siCNV output:
 
 ```{r}
-compare_intervals <- function(df_siCNV, df_NB) {
-  results <- data.frame(chr = integer(),
+compare_intervals = function(df_siCNV, df_NB) {
+  results = data.frame(chr = integer(),
                         state = character(),
                         match = logical(),
                         length_siCNV = integer(),
@@ -210,37 +219,35 @@ compare_intervals <- function(df_siCNV, df_NB) {
   for (i in 1:nrow(df_siCNV)) {
     for (j in 1:nrow(df_NB)) {
       
-      ##chr matches?
+      #chr matches?
       if (df_siCNV$chr[i] == df_NB$CHROM[j]) {
         
-        ## state matches?
-        match_status <- df_siCNV$cnv_state_clean[i] == df_NB$cnv_state[j]
+        # state matches?
+        match_status = df_siCNV$cnv_state_clean[i] == df_NB$cnv_state[j]
         
         if (match_status) {
           # make seqs based on start and end values
-          seq_siCNV <- seq(df_siCNV$start[i], df_siCNV$end[i])
-          seq_NB <- seq(df_NB$seg_start[j], df_NB$seg_end[j])
+          seq_siCNV = seq(df_siCNV$start[i], df_siCNV$end[i])
+          seq_NB = seq(df_NB$seg_start[j], df_NB$seg_end[j])
           
-          ## calc lengths
-          length_siCNV <- length(seq_siCNV)
-          length_NB <- length(seq_NB)
+          # calc lengths, find intersect, calc percentages
+          length_siCNV = length(seq_siCNV)
+          length_NB = length(seq_NB)
+
+          nr_match = length(intersect(seq_siCNV, seq_NB))
           
-          ## find intersect
-          nr_match <- length(intersect(seq_siCNV, seq_NB))
-          
-          ## calc percentages
-          pct_match_siCNV <- nr_match / length_siCNV * 100
-          pct_match_NB <- nr_match / length_NB * 100
+          pct_match_siCNV = nr_match / length_siCNV * 100
+          pct_match_NB = nr_match / length_NB * 100
         } else {
-          length_siCNV <- NA
-          length_NB <- NA
-          nr_match <- NA
-          pct_match_siCNV <- NA
-          pct_match_NB <- NA
+          length_siCNV = NA
+          length_NB = NA
+          nr_match = NA
+          pct_match_siCNV = NA
+          pct_match_NB = NA
         }
         
-        ## apend to results
-        results <- rbind(results, data.frame(chr = df_siCNV$chr[i],
+        # apend to results
+        results = rbind(results, data.frame(chr = df_siCNV$chr[i],
                                              state = df_siCNV$cnv_state_clean[i],
                                              match = match_status,
                                              length_siCNV = length_siCNV,
@@ -258,27 +265,44 @@ compare_intervals <- function(df_siCNV, df_NB) {
 ```
 
 ```{r}
-outs <- compare_intervals(grr_df, LN0040HD_segs_subs)
+# before comparing icnv and numbat results: since we have single cell data (in the numbat object) for one more patient for which we do not have spatial data: first intersect names of both the "infercnv" results and the "numbat" results, so we only compare the ones that match
+common_names = intersect(names(infcnv_grr_df_list), names(nb_cnv_list_subs_delamp))
+
+#subset data
+infercnv_matched = infcnv_grr_df_list[common_names]
+numbat_matched = nb_cnv_list_subs_delamp[common_names]
+
+# make comparisons
+outs = mapply(compare_intervals, infercnv_matched, numbat_matched, SIMPLIFY = FALSE)
+names(outs) = common_names
+
 ```
 
 ```{r}
-write.csv(
-  outs, 
-  "/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/siCNV_numbat_matching/LN0040HD/LN0040HD_per_spat_dom_analysis.csv", 
-  row.names = TRUE
-  )
-```
+# save everythign
+pat = "/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/"
 
-```{r}
-write.csv(
-  LN0040HD_segs_subs,
-  "/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/siCNV_numbat_matching/LN0040HD/LN0040HD_numbat_output.csv"
-)
-```
-
-```{r}
-write.csv(
-  grr_df,
-  "/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/siCNV_numbat_matching/LN0040HD/LN0040HD_siCNV_output.csv"
-)
+# numbat data (i.e. cnv calls from single cell data) has 1 additional patient for which we don't have spatial data, only sc.) threfore intersect all (patient) names and save on a per-patient basis
+names_same = intersect(intersect(names(outs), names(infcnv_grr_df_list)), names(nb_cnv_list_subs_delamp))
+for (name in names_same) {
+  
+  # make subdir for each patient based on names
+  out_dir = file.path(pat, name)
+  dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
+  
+# save results of sicnv and numbat matching
+  write.csv(outs[[name]],
+            file = file.path(out_dir, "infercnv_numbat_matching.csv"),
+            row.names = TRUE)
+  
+# save infercnv results 
+  write.csv(infcnv_grr_df_list[[name]],
+            file = file.path(out_dir, "infercnv_results.csv"),
+            row.names = FALSE)
+  
+  # save numbat results
+  write.csv(nb_cnv_list_subs_delamp[[name]],
+            file = file.path(out_dir, "numbat_results.csv"),
+            row.names = FALSE)
+}
 ```
