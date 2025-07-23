@@ -236,7 +236,8 @@ compare_intervals = function(df_siCNV, df_NB) {
           length_siCNV = length(seq_siCNV)
           length_NB = length(seq_NB)
 
-          nr_match = length(intersect(seq_siCNV, seq_NB))
+          seq_intersect = intersect(seq_siCNV, seq_NB)
+          nr_match = length(seq_intersect)
           
           pct_match_siCNV = nr_match / length_siCNV * 100
           pct_match_NB = nr_match / length_NB * 100
@@ -255,6 +256,8 @@ compare_intervals = function(df_siCNV, df_NB) {
                                              length_siCNV = length_siCNV,
                                              length_NB = length_NB,
                                              nr_match = nr_match,
+                                             start_match = min(seq_intersect),
+                                             end_match = max(seq_intersect),
                                              pct_match_siCNV = pct_match_siCNV,
                                              pct_match_NB = pct_match_NB))
       }
