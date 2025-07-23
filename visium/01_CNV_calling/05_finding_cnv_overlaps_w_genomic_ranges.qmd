@@ -5,9 +5,9 @@ format: html
 editor: visual
 ---
 
-## computing CNV overlaps with GenomicRanges
+## Computing CNV overlaps with GenomicRanges
 
-Aim: get familiar with the genomic ranges package and use it to compute shared CNV regions.
+Aiming to calculate CNV overlaps for inferCNV output data that was calculated on a "per visium spot-basis" rather than "per spatial domain-basis" (as was done previously).
 
 ```{r}
 # load libraries
@@ -16,32 +16,29 @@ library(magrittr)
 library(qs)
 library(GenomicRanges)
 library(Gviz)
+library(rtracklayer)
 ```
 
 ```{r}
-# import data
-data = read.table("/scratch/tomek/01_siCNV/20250610_LN0038_cutoff_0.1_cluster_by_groups_FALSE_analysis_mode_cells_HMM_report_by_cell_denoise_TRUE/17_HMM_predHMMi6.hmm_mode-cells.pred_cnv_regions.dat",
-                  sep = "\t",
-                  header = TRUE)
+# load in trial dataset of "per visium spot cnv calls"
+test = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/LN0040HD/LN0040HD_12BV2R_R1/HMM_CNV_predictions.HMMi6.hmm_mode-cells.Pnorm_0.5.pred_cnv_regions.dat", header = TRUE)
 ```
+
+Interesting: all the reference cells are also in the infercnv output data. Separate them from the actual patient barcodes and analyze individually
 
 ```{r}
-genes = read.table("/scratch/tomek/01_siCNV/20250610_LN0038_cutoff_0.1_cluster_by_groups_FALSE_analysis_mode_cells_HMM_report_by_cell_denoise_TRUE/17_HMM_predHMMi6.hmm_mode-cells.pred_cnv_genes.dat",
-                  sep = "\t",
-                  header = TRUE)
+# filter out the rows in "roi_data_concat" that contain our sample name 
+test_subset_to_keep = grep(paste0("^", "LN0040HD", "_"), test$cell_group_name)
+test_filtered = test[test_subset_to_keep, , drop=FALSE]
 ```
 
-```{r}
-#genelistsubs = genelist[genelist$gene_region_name == "chr1-region_47",]
-```
-
-In order to construct genomic ranges object: use IRanges constructor to build IRanges object with start & stop values for our CNVs
+1st step: use IRanges constructor to construct IRanges object with start/stop values for our CNVs
 
 ```{r}
 cnvranges = IRanges(
-  start = data$start, 
-  end = data$end, 
-  names = data$cnv_name
+  start = test_filtered$start, 
+  end = test_filtered$end, 
+  names = test_filtered$cnv_name
   )
 ```
 
@@ -49,20 +46,20 @@ Next, construct GRanges object
 
 ```{r}
 gr = GRanges(
-  seqnames = data$chr,
+  seqnames = test_filtered$chr,
   ranges = cnvranges,
-  bc = data$cell_group_name,
-  state = data$state,
-  cnv_name = data$cnv_name
+  bc = test_filtered$cell_group_name,
+  state = test_filtered$state,
+  cnv_name = test_filtered$cnv_name
   )
 ```
 
-Now, reduce gr object, but keep track of metadata (bc name)
+Now, reduce genomic ranges object to focus on CNVs that were found in all cells (but keep track of metadata (bc name))
 
 ```{r}
 grr = reduce(gr, with.revmap = TRUE)
 
-mcols(grr) <- do.call(rbind,
+mcols(grr) = do.call(rbind,
                       lapply(mcols(grr)$revmap, function(i) {
                         data.frame(
                           bc = paste(mcols(gr)$bc[ i ], collapse = ","),
@@ -75,243 +72,74 @@ mcols(grr) <- do.call(rbind,
 # testing to see how often each state appears.
 # starting with "reduced cnv: 1
 # Example input
-test_cnv <- grr[8]$state
+test_cnv = grr[9]$state
 
-# Step 1: Split the string into individual numbers
-numbers <- as.integer(strsplit(test_cnv, ",")[[1]])
+numbers = as.integer(strsplit(test_cnv, ",")[[1]])
 
-# Step 2: Use table to count occurrences
-count_table <- table(factor(numbers, levels = 1:6))
+count_table = table(factor(numbers, levels = 1:6))
 
-# Step 3: Print results
 for (i in 1:6) {
   cat(i, ":", count_table[i], "\n")
 }
 
 ```
 
-#### upload hg38.txt file of genomic ranges to get sizes for all chromosomes
+## CNV analysis
+
+As seen from the plot, the CNVs still encompass the whole chromosome when we apply GenomicRanges::reduce, so we need to find another way.
+
+Crude analysis:
+
+1.) find overlaps between CNVs
+
+2.) define function to only count CNVs as "matching" when they overlap at least 70%
+
+3.) reduce these CNVs that were identified in step 2.)
 
 ```{r}
-hg38 = read.delim("/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/hg38_gencode_v27.txt",
-                  header = FALSE)
+#cnv_overlaps = findOverlaps(gr, gr)
+#cnv_overlaps_flt = cnv_overlaps[queryHits(cnv_overlaps) < subjectHits(cnv_overlaps)]
 ```
 
 ```{r}
-# make a list of all the unique chromosomes
-unique_vals <- as.list(unique(hg38[[2]]))
-```
-
-Now, extract the min and max values of hg38 for each chromosome
-
-```{r}
- chr_start_end <- data.frame(
-  chr = character(),
-  start = numeric(),
-  end = numeric(),
-  stringsAsFactors = FALSE
-)
-
-for (val in unique_vals) {
-  subset_rows <- hg38[hg38[[2]] == val, ]
-  min_col3 <- min(subset_rows[[3]], na.rm = TRUE)
-  max_col4 <- max(subset_rows[[4]], na.rm = TRUE)
+#hits_70pct = cnv_overlaps_flt[sapply(seq_along(cnv_overlaps_flt), function(i) {
   
-  chr_start_end <- rbind(chr_start_end, data.frame(
-    chr = val,
-    start = min_col3,
-    end = max_col4
-  ))
-}
+  #hit1 = gr[queryHits(cnv_overlaps_flt)[i]]
+  #hit2 = gr[subjectHits(cnv_overlaps_flt)[i]]
+  
+  #print(hit1)
+  #print(hit2)
+  #intrsct = pintersect(hit1, hit2)
+  #intrsct_width = width(intrsct)
+  
+  #min(width(hit1), width(hit2)) > 0 &&
+    #intrsct_width / width(hit1) >= 0.7 &&
+    #intrsct_width / width(hit2) >= 0.7
+#})]
+```
 
-#print(results)
+### None of the above is fast enough - use binned genome approach
 
+```{r}
+genome = GRangesForBSGenome('hg38') 
+binnedgenome = tileGenome(seqlengths = seqinfo(genome), tilewidth=10000) # returns a list for each bin
+binnedgenome = unlist(binnedgenome) #%>% dropSeqlevels(binnedgenome, c('chrM','chrY'), pruning.mode = 'coarse')
 ```
 
 ```{r}
-# make a small check:
-# ch13 = hg38[hg38[[2]] == 'chr13',]
-```
-
-Now: plot the "reduced" CNVs onto the chromosome sizes:
-
-Before starting to plot, bring both of the information into a dataframe to make the plot:
-
-```{r}
-# for chr1
-chr1_cnv = grr[1]
-atrack <- AnnotationTrack(chr1_cnv, name = "CNV")
-itrack <- IdeogramTrack(genome = "hg38", chromosome = 1)
-plotTracks(list(atrack, itrack))
-
-```
-
-First, make function to check whether all values of a vector are unique.\
-Since "grr\@seqnames = class "run-length encoding", add "as.vector".
-
-```{r}
-# make func to check of all values of a vector are unique
-all_unique = function(x) !any(duplicated(as.vector(x)))
-
+hits = findOverlaps(gr, binnedgenome)
 ```
 
 ```{r}
-all_unique(grr@seqnames)
-
-```
-
-Now make df of them together:
-
-```{r}
-# make df of grr object
-grr_df = data.frame(
-  chr_cnv = as.character(seqnames(grr)),
-  cnv_start = start(grr),
-  cnv_end = end(grr)
-)
-
-# merge, chromosom based matching
-# rm chrM, chrX, chrY; 
-merged_df = merge(chr_start_end, grr_df, by.x = "chr", by.y = "chr_cnv", all.x = TRUE)
-merged_df = merged_df[!(merged_df$chr %in% c("chrM", "chrX", "chrY")), ]
-
-# order by chromosome (is char vector, make numerical vector helper col)
-merged_df$chr_num <- as.numeric(gsub("chr", "", merged_df$chr))
-merged_df <- merged_df[order(merged_df$chr_num), ]
-merged_df$chr_num <- NULL 
-
+gr$bin_ids = split(subjectHits(hits), queryHits(hits))
 ```
 
 ```{r}
-names(merged_df)[names(merged_df) == "start"] <- "Reference_start"
-names(merged_df)[names(merged_df) == "end"] <- "Reference_end"
-names(merged_df)[names(merged_df) == "cnv.start"] <- "CNV_start"
-names(merged_df)[names(merged_df) == "cnv.end"] <- "CNV_end"
-
+# Turn bin indices into strings for grouping
+gr$bin_signature = sapply(gr$bin_ids, function(b) paste(sort(b), collapse = "-"))
 ```
 
 ```{r}
-#DO NOT USE
-# Create a long-format data frame directly from merged_df
-df_plot <- data.frame(
-  id = c("Reference", "CNV"),
-  start = c(merged_df$start, merged_df$cnv_start),
-  end = c(merged_df$end, merged_df$cnv_end)
-)
-
-# Plot the bars
-ggplot(df_plot, aes(y = id)) +
-  geom_segment(aes(x = start, xend = end, yend = id), size = 5, color = "steelblue") +
-  labs(x = "Genomic Position", y = "") #+
-  #theme_minimal()
-
+# Group by shared signature
+gr_collapsed = split(gr, gr$bin_signature)
 ```
-
-```{r}
-# step 1: reshape merged_df into long format
-df_plot <- merged_df %>%
-  mutate(row = row_number()) %>%
-  pivot_longer(
-    cols = ends_with("start") | ends_with("end"),
-    names_to = c("type", ".value"),
-    names_sep = "_"
-  )
-```
-
-```{r}
-# Now df_plot has columns: chr, row, type (Reference/CNV), start, end
-plot = ggplot(df_plot) +
-  geom_segment(aes(x = start, xend = end, y = type, yend = type, color = type), size = 4) +
-  facet_wrap(~ chr, scales = "free_x") +
-  theme_minimal(base_size = 14) +
-  theme(
-    strip.text = element_text(face = "bold"),
-    axis.title = element_blank(),
-    legend.position = "none"
-  ) +
-  scale_color_manual(values = c("Reference" = "steelblue", "CNV" = "orange")) +
-  ggtitle("Reference and CNV Ranges per Chromosome")
-
-print(plot)
-
-ggsave("/g/saka/Tatjana/visium/analysis_1/Krimskrams/chromosome_ranges_plot.pdf", plot = plot, width = 16, height = 20)
-```
-
-Now that we have genomic ranges object, split it up per disease entity ("spatial domain") - for this, import "annotations" file as it was used for running siCNV
-
-```{r}
-annot = read.table("01_CNV_analysis/03_siCNV_LN0438/final_annotations_LN0438_healthy.tsv",
-                   sep = "\t",
-                   )
-```
-
-Add annotations (i.e. spatial domains) as new metadata column
-
-```{r}
-# Assume gr$barcodes and annot are already defined
-# Match gr$barcodes with annot$V1
-matched_indices <- match(gr$barcodes, annot$V1)
-
-# Now use those indices to extract the annotation
-gr$annot <- annot$V2[matched_indices]
-
-```
-
-```{r}
-# Subset rows where gr$annot is "cancer"
-gr_cFL_d <- gr[gr$annot == "cFL_diffuse", ]
-
-gr_cFL_d_red <- reduce(gr_cFL_d)
-```
-
-```{r}
-gr_cFL_f <- gr[gr$annot == "cFL_follicular", ]
-
-gr_cFL_f_red <- reduce(gr_cFL_f)
-```
-
-```{r}
-gr_interf <- gr[gr$annot == "interfollicular", ]
-
-gr_interf_red <- reduce(gr_interf)
-```
-
-```{r}
-gr_gc = gr[gr$annot == "GC", ]
-gr_GC_red <- reduce(gr_gc)
-
-```
-
-There needs to be something really wrong - it is impossible that the "GC" marked barcodes have the same CNVs like the cancerous regions.\
-Investigate this later, make plots at first. But investigate
-
-```{r}
-test <- reduce(gr)
-```
-
-### Gviz plots
-
-First, using the dataset that comes with the package to try out
-
-```{r}
-gvistest <- gr[18]
-
-```
-
-```{r}
-atrack <- AnnotationTrack(gvistest, name = "CNV")
-gtrack <- GenomeAxisTrack()
-itrack <- IdeogramTrack(genome = "hg38", chromosome = 1)
-```
-
-```{r}
-plotTracks(list(itrack, gtrack, atrack))
-#ggsave(
-  #"/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/03_siCNV_LN0438/20250423_cutoff_0.1_cluster_by_groups_TRUE_analysis_mode_samples_HMM_report_by_subcluster_denoise_TRUE/analysis/cnv_example_ideogram.png", cnvexampleplot)
-```
-
-```{r}
-
-```
-
-Instead of gviz, plot
