@@ -6,7 +6,9 @@ editor: visual
 
 ## Comparison of CNV calls - inferCNV vs. Numbat
 
-For each patient, we have single cell RNAseq data from their tumor, as well as visium spatial transcriptomics. Copy number variations were called both on the single cell data (done by Kristy before i joined, as well as on the 10x Visium data (done by me) - comparing how well these called CNVs match
+For each patient, we have single cell RNAseq data from their tumor, as well as visium spatial transcriptomics. Copy number variations were called both on the single cell data (done by Kristy before i joined, as well as on the 10x Visium data (done by me) - comparing how well these called CNVs match\
+\
+NOTE: regarding infercnv: this script works with infercnv data that was computed on a "per spatial domain-basis", i.e., CNVs were infered on 4 morphologically different regions of disease severity, as opposed to CNVs that were infered on a "per visium spot-basis".
 
 ```{r}
 library(qs)
