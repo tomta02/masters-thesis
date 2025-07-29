@@ -30,13 +30,13 @@ all the reference cells are also in the infercnv output data. Separate them from
 # filter out the rows in "roi_data_concat" that contain our sample name 
 test_subset_to_keep = grep(paste0("^", "LN0040HD", "_"), test$cell_group_name)
 test_flt = test[test_subset_to_keep, , drop=FALSE]
-test_flt = split(test_flt, test_flt$cell_group_name)
+test_flt_lst = split(test_flt, test_flt$chr)
 ```
 
 Construct GRanges object
 
 ```{r}
-gr_list = lapply(test_flt, function(bc) {
+gr_list = lapply(test_flt_lst, function(bc) {
   GRanges(
     seqnames = bc$chr,
     ranges = IRanges(
@@ -48,6 +48,19 @@ gr_list = lapply(test_flt, function(bc) {
     cnv_name = bc$cnv_name
     )
   })
+```
+
+```{r}
+# instead of list of genomic ranges objects, actually try following operations on singular genomics ranges object
+gr = GRanges(seqnames = test_flt$chr,
+             ranges = IRanges(
+               start = test_flt$start,
+               end = test_flt$end,
+               names = test_flt$cnv_name),
+              barcode = test_flt$cell_group_name,
+              state = test_flt$state,
+              cnv_name = test_flt$cnv_name
+             )
 ```
 
 Now, reduce genomic ranges object to focus on CNVs that were found in all cells (but keep track of metadata (bc name))
@@ -198,4 +211,49 @@ trial$seqnames = as.character(test2$seqnames)
 ```{r}
 # order 
 trial = test2[order(test2$seqnames, test2$bin_start), ]
+```
+
+Ditch binned genome approach and compare CNVs to one another
+
+```{r}
+hits = findOverlaps(gr, gr)
+hits_df = as.data.frame(hits)
+
+# GET RID OFself-comparisons and duplicates (otherwise we get stuff like., A vs B and B vs A), no need
+
+hits_df = hits_df %>% filter(queryHits < subjectHits)
+
+# add data from genomic ranges object as metadata to hits_df
+hits_df = hits_df %>%
+  mutate(
+    state_q = mcols(gr)$state[queryHits],
+    state_s = mcols(gr)$state[subjectHits],
+    start_q = start(gr)[queryHits],
+    end_q = end(gr)[queryHits],
+    start_s = start(gr)[subjectHits],
+    end_s = end(gr)[subjectHits]
+)
+```
+
+```{r}
+hits_df = hits_df %>% filter(
+    state_q == state_s & 
+    as.character(seqnames(gr)[queryHits]) == as.character(seqnames(gr)[subjectHits])
+)
+```
+
+```{r}
+# get final overlaps
+hits_df = hits_df %>%
+  mutate(
+    overlap_start = pmax(start_q, start_s),
+    overlap_end = pmin(end_q, end_s),
+    overlap_width = pmax(0, overlap_end - overlap_start + 1),
+    width_q = end_q - start_q + 1,
+    width_s = end_s - start_s + 1,
+    prop_q = overlap_width/width_q,
+    prop_s = overlap_width/width_s
+  ) %>%
+  filter(prop_q > 0.7 & prop_s > 0.7)
+
 ```
