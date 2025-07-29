@@ -24,69 +24,65 @@ library(rtracklayer)
 test = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/LN0040HD/LN0040HD_12BV2R_R1/HMM_CNV_predictions.HMMi6.hmm_mode-cells.Pnorm_0.5.pred_cnv_regions.dat", header = TRUE)
 ```
 
-Interesting: all the reference cells are also in the infercnv output data. Separate them from the actual patient barcodes and analyze individually
+all the reference cells are also in the infercnv output data. Separate them from the actual patient barcodes and analyze individually
 
 ```{r}
 # filter out the rows in "roi_data_concat" that contain our sample name 
 test_subset_to_keep = grep(paste0("^", "LN0040HD", "_"), test$cell_group_name)
-test_filtered = test[test_subset_to_keep, , drop=FALSE]
+test_flt = test[test_subset_to_keep, , drop=FALSE]
+test_flt = split(test_flt, test_flt$cell_group_name)
 ```
 
-1st step: use IRanges constructor to construct IRanges object with start/stop values for our CNVs
+Construct GRanges object
 
 ```{r}
-cnvranges = IRanges(
-  start = test_filtered$start, 
-  end = test_filtered$end, 
-  names = test_filtered$cnv_name
-  )
-```
-
-Next, construct GRanges object
-
-```{r}
-gr = GRanges(
-  seqnames = test_filtered$chr,
-  ranges = cnvranges,
-  bc = test_filtered$cell_group_name,
-  state = test_filtered$state,
-  cnv_name = test_filtered$cnv_name
-  )
+gr_list = lapply(test_flt, function(bc) {
+  GRanges(
+    seqnames = bc$chr,
+    ranges = IRanges(
+      start = bc$start,
+      end = bc$end, 
+      names = bc$cnv_name),
+    barcode = bc$cell_group_name,
+    state = bc$state,
+    cnv_name = bc$cnv_name
+    )
+  })
 ```
 
 Now, reduce genomic ranges object to focus on CNVs that were found in all cells (but keep track of metadata (bc name))
 
 ```{r}
-grr = reduce(gr, with.revmap = TRUE)
+#grr = reduce(gr, with.revmap = TRUE)
 
-mcols(grr) = do.call(rbind,
-                      lapply(mcols(grr)$revmap, function(i) {
-                        data.frame(
-                          bc = paste(mcols(gr)$bc[ i ], collapse = ","),
-                          state = paste(mcols(gr)$state[ i ], collapse = ","),
-                          cnv_name = paste(mcols(gr)$cnv_name[ i ], collapse = ","))
-                        }))
+#mcols(grr) = do.call(rbind,
+                      #lapply(mcols(grr)$revmap, function(i) {
+                        #data.frame(
+                          #bc = paste(mcols(gr)$bc[ i ], collapse = ","),
+                          #state = paste(mcols(gr)$state[ i ], collapse = ","),
+                          #cnv_name = paste(mcols(gr)$cnv_name[ i ], collapse = ","))
+                        #}))
 ```
 
 ```{r}
 # testing to see how often each state appears.
 # starting with "reduced cnv: 1
 # Example input
-test_cnv = grr[9]$state
+#test_cnv = grr[9]$state
 
-numbers = as.integer(strsplit(test_cnv, ",")[[1]])
+#numbers = as.integer(strsplit(test_cnv, ",")[[1]])
 
-count_table = table(factor(numbers, levels = 1:6))
+#count_table = table(factor(numbers, levels = 1:6))
 
-for (i in 1:6) {
-  cat(i, ":", count_table[i], "\n")
-}
+#for (i in 1:6) {
+  #cat(i, ":", count_table[i], "\n")
+#}
 
 ```
 
-## CNV analysis
+Note: did not proceed with "reduced" cnvs, as data is quite sparse -\> reducing our cnvs across spots leads to the artificial creation of very few unusually large cnvs, as barely overlapping cnvs are joined when applying "reduce"
 
-As seen from the plot, the CNVs still encompass the whole chromosome when we apply GenomicRanges::reduce, so we need to find another way.
+## CNV analysis
 
 Crude analysis:
 
@@ -118,7 +114,7 @@ Crude analysis:
 #})]
 ```
 
-### None of the above is fast enough - use binned genome approach
+### not fast enough - use binned genome approach
 
 ```{r}
 genome = GRangesForBSGenome('hg38') 
@@ -126,20 +122,80 @@ binnedgenome = tileGenome(seqlengths = seqinfo(genome), tilewidth=10000) # retur
 binnedgenome = unlist(binnedgenome) #%>% dropSeqlevels(binnedgenome, c('chrM','chrY'), pruning.mode = 'coarse')
 ```
 
+after talking to Kristy: trying opposite approach - use binned genome as query and cnvs as subject
+
 ```{r}
-hits = findOverlaps(gr, binnedgenome)
+hits = lapply(gr_list, function(bc_gr) {
+  findOverlaps(binnedgenome, bc_gr)
+})
+```
+
+test function with one element
+
+```{r}
+hitstest = hits[[1]]
+grtest = gr_list[[1]]
 ```
 
 ```{r}
-gr$bin_ids = split(subjectHits(hits), queryHits(hits))
+# reformating the genomic bins into genomic coordinates (start/stop)
+# this was too computationally heavy for RStudio - connected to cluster via srun and did it interactively, saved resulting list and will load below
+#gr_list = mapply(function(bc_gr, bc_hits) {
+  #bc_gr$bin_start = queryHits(bc_hits[1])
+  #bc_gr$bin_stop = queryHits(bc_hits[length(bc_hits)])
+  #bc_gr
+#}, gr_list, hits, SIMPLIFY = FALSE)
 ```
 
 ```{r}
-# Turn bin indices into strings for grouping
-gr$bin_signature = sapply(gr$bin_ids, function(b) paste(sort(b), collapse = "-"))
+# load gr_list
+gr_list2 = readRDS("/g/saka/Tatjana/data/data_for_testing_stuff/LN0040HD_12BV2R_R1_spotbased_cnv_results_matched_to_binned_genome.RData")
 ```
 
 ```{r}
-# Group by shared signature
-gr_collapsed = split(gr, gr$bin_signature)
+# make func for adding bin start & stop vals
+add_bin_startstop + function(gr) {
+  
+  # initialize values
+  n = length(gr)
+  bin_start = rep(NA_integer_, n)
+  bin_stop = rep(NA_integer_, n)
+  
+  for (i in seq_len(n)) {
+    bins = gr$bin_ids[[i]]
+    
+    # are bins not emoty and numeric? if so, add start & stop vals
+    if (!is.null(bins) && length(bins) > 0 && is.numeric(bins)) {
+      bin_start[i] = min(bins)
+      bin_stop[i] = max(bins)
+    }
+  }
+  gr$bin_start = bin_start
+  gr$bin_stop = bin_stop
+  
+  gr
+}
+
+```
+
+```{r}
+gr_list_w_start_stop = lapply(gr_list2, add_bin_start_stop)
+gr_list_w_start_stop = GRangesList(gr_list_w_start_stop)
+```
+
+NOW: unlist, , pattern matching
+
+```{r}
+gr_w_start_stop = unlist(gr_list_w_start_stop, use.names = FALSE)
+```
+
+```{r}
+# converting to df, as calculating overlaps will prob be faster
+trial = as.data.frame(gr_w_start_stop)
+trial$seqnames = as.character(test2$seqnames)
+```
+
+```{r}
+# order 
+trial = test2[order(test2$seqnames, test2$bin_start), ]
 ```
