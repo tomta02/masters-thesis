@@ -38,9 +38,8 @@ infCNV_run <- infercnv::run(infCNV_obj,
                             cluster_by_groups = FALSE,
                             num_threads = 8,
                             analysis_mode = "cells",
-                            #tumor_subcluster = TRUE,
+                            no_plot = TRUE, #default: FALSE, trying this out as some samples had failed in the plotting step, and we don't necessarily need them
                             HMM_report_by = "cell",
-                            #tumor_subcluster_partition_method = "leiden",
                             HMM = TRUE,
                             denoise = TRUE)
 
