@@ -17,6 +17,7 @@ library(qs)
 library(GenomicRanges)
 library(Gviz)
 library(rtracklayer)
+library(igraph)
 ```
 
 ```{r}
@@ -95,7 +96,7 @@ Now, reduce genomic ranges object to focus on CNVs that were found in all cells 
 
 Note: did not proceed with "reduced" cnvs, as data is quite sparse -\> reducing our cnvs across spots leads to the artificial creation of very few unusually large cnvs, as barely overlapping cnvs are joined when applying "reduce"
 
-## CNV analysis
+# CNV analysis
 
 Crude analysis:
 
@@ -103,31 +104,9 @@ Crude analysis:
 
 2.) define function to only count CNVs as "matching" when they overlap at least 70%
 
-3.) reduce these CNVs that were identified in step 2.)
+(3.) reduce these CNVs that were identified in step 2.))
 
-```{r}
-#cnv_overlaps = findOverlaps(gr, gr)
-#cnv_overlaps_flt = cnv_overlaps[queryHits(cnv_overlaps) < subjectHits(cnv_overlaps)]
-```
-
-```{r}
-#hits_70pct = cnv_overlaps_flt[sapply(seq_along(cnv_overlaps_flt), function(i) {
-  
-  #hit1 = gr[queryHits(cnv_overlaps_flt)[i]]
-  #hit2 = gr[subjectHits(cnv_overlaps_flt)[i]]
-  
-  #print(hit1)
-  #print(hit2)
-  #intrsct = pintersect(hit1, hit2)
-  #intrsct_width = width(intrsct)
-  
-  #min(width(hit1), width(hit2)) > 0 &&
-    #intrsct_width / width(hit1) >= 0.7 &&
-    #intrsct_width / width(hit2) >= 0.7
-#})]
-```
-
-### not fast enough - use binned genome approach
+### Use binned genome approach
 
 ```{r}
 genome = GRangesForBSGenome('hg38') 
@@ -143,11 +122,10 @@ hits = lapply(gr_list, function(bc_gr) {
 })
 ```
 
-test function with one element
-
 ```{r}
-hitstest = hits[[1]]
-grtest = gr_list[[1]]
+# test function with one element
+#hitstest = hits[[1]]
+#grtest = gr_list[[1]]
 ```
 
 ```{r}
@@ -167,7 +145,7 @@ gr_list2 = readRDS("/g/saka/Tatjana/data/data_for_testing_stuff/LN0040HD_12BV2R_
 
 ```{r}
 # make func for adding bin start & stop vals
-add_bin_startstop + function(gr) {
+add_bin_startstop = function(gr) {
   
   # initialize values
   n = length(gr)
@@ -192,68 +170,159 @@ add_bin_startstop + function(gr) {
 ```
 
 ```{r}
-gr_list_w_start_stop = lapply(gr_list2, add_bin_start_stop)
-gr_list_w_start_stop = GRangesList(gr_list_w_start_stop)
+gr_lst_start_stop = lapply(gr_list2, add_bin_startstop)
+gr_lst_start_stop = GRangesList(gr_lst_start_stop)
+gr_start_stop = unlist(gr_lst_start_stop, use.names=FALSE)
+gr_lst_start_stop = split(gr_start_stop, gr_start_stop@seqnames)
 ```
 
-NOW: unlist, , pattern matching
+### Continuing analysis based on converstation w. Kristy
+
+-   convert GRanges objects to df, drop the cols that are not needed
+
+-   group by bin_id and cnv state, then run summary statistics
 
 ```{r}
-gr_w_start_stop = unlist(gr_list_w_start_stop, use.names = FALSE)
-```
-
-```{r}
-# converting to df, as calculating overlaps will prob be faster
-trial = as.data.frame(gr_w_start_stop)
-trial$seqnames = as.character(test2$seqnames)
-```
-
-```{r}
-# order 
-trial = test2[order(test2$seqnames, test2$bin_start), ]
-```
-
-Ditch binned genome approach and compare CNVs to one another
-
-```{r}
-hits = findOverlaps(gr, gr)
-hits_df = as.data.frame(hits)
-
-# GET RID OFself-comparisons and duplicates (otherwise we get stuff like., A vs B and B vs A), no need
-
-hits_df = hits_df %>% filter(queryHits < subjectHits)
-
-# add data from genomic ranges object as metadata to hits_df
-hits_df = hits_df %>%
-  mutate(
-    state_q = mcols(gr)$state[queryHits],
-    state_s = mcols(gr)$state[subjectHits],
-    start_q = start(gr)[queryHits],
-    end_q = end(gr)[queryHits],
-    start_s = start(gr)[subjectHits],
-    end_s = end(gr)[subjectHits]
-)
+gr_lst_start_stop_dfs = lapply(gr_lst_start_stop, as.data.frame)
 ```
 
 ```{r}
-hits_df = hits_df %>% filter(
-    state_q == state_s & 
-    as.character(seqnames(gr)[queryHits]) == as.character(seqnames(gr)[subjectHits])
-)
+# keep only the cols of interest
+gr_lst_start_stop_dfs = lapply(gr_lst_start_stop_dfs, function(df) {
+  df %>% select(seqnames, barcode, state, bin_start, bin_stop)
+})
+
+# also, make new rownames based on chromosome, bin_start and bin_stop
+gr_lst_start_stop_dfs = lapply(gr_lst_start_stop_dfs, function(df) {
+  # Create new rownames
+  newnames = paste0(df$seqnames, "_", df$bin_start, "_", df$bin_stop)
+  rownames(df) = make.unique(newnames)
+  return(df)
+})
 ```
 
 ```{r}
-# get final overlaps
-hits_df = hits_df %>%
-  mutate(
-    overlap_start = pmax(start_q, start_s),
-    overlap_end = pmin(end_q, end_s),
-    overlap_width = pmax(0, overlap_end - overlap_start + 1),
-    width_q = end_q - start_q + 1,
-    width_s = end_s - start_s + 1,
-    prop_q = overlap_width/width_q,
-    prop_s = overlap_width/width_s
-  ) %>%
-  filter(prop_q > 0.7 & prop_s > 0.7)
+gr_lst_start_stop_dfs = lapply(gr_lst_start_stop_dfs, function(df) {
+  df = rownames_to_column(df, "bin_ID")
+  return(df)
+})
+```
+
+```{r}
+gr_lst_start_stop_dfs = lapply(gr_lst_start_stop_dfs, function(df) {
+  df = df %>% group_by(bin_ID) #, state)
+  return(df)
+})
+```
+
+### overlapped cnvs to genome, but still want to find cnvs with x % overlap to others... need to findOverlaps with self instead?
+
+```{r}
+#getoverlappingranges = function(gr) {
+  hitsgr = findOverlaps(gr, gr)
+  hitsgr_df = as.data.frame(hitsgr) 
+  
+  hitsgr_df = hitsgr_df %>% filter(queryHits < subjectHits) 
+  
+  
+  # to do filtering on X % overlap of query and subject ranges, 
+  # add metadata from genomicranges object
+  hitsgr_df = hitsgr_df %>% 
+    mutate(
+      state_q = mcols(gr)$state[queryHits],
+      state_s = mcols(gr)$state[subjectHits],
+      start_q = start(gr)[queryHits],
+      end_q = end(gr)[queryHits],
+      start_s = start(gr)[subjectHits],
+      end_s = end(gr)[subjectHits]
+      ) 
+  # now, keep only hits where the state was the same
+ hitsgr_df = hitsgr_df %>% filter(state_q == state_s) # uncomment this and try again - compare
+  
+  # now, calculate overlaps of cnvs with one another
+  hitsgr_df = hitsgr_df %>% 
+    mutate(
+      overlap_start = pmax(start_q, start_s),
+      overlap_end = pmin(end_q, end_s),
+      overlap_width = pmax(0, overlap_end - overlap_start + 1),
+      width_q = end_q - start_q + 1,
+      width_s = end_s - start_s + 1,
+      prop_q = overlap_width / width_q,
+      prop_s = overlap_width / width_s
+    )
+  
+  # now, only keep the cnvs that have a X % overlap with some other CNV - chose 70% for now
+  hitsgr_df = hitsgr_df %>% filter(prop_q > 0.7 & prop_s > 0.7)
+  
+  # last: get indices of overlapping cnvs, to filter the original GRanges object
+  # and return filtered GRanges object
+  overlapids = unique(c(hitsgr_df$queryHits, hitsgr_df$subjectHits))
+  
+ # return(gr[overlapids])
+#}
+
+```
+
+```{r}
+#overlapping_cnvs = lapply(gr_lst_start_stop, getoverlappingranges)
+```
+
+```{r}
+overlapping_cnvs = gr[overlapids]
+```
+
+```{r}
+reduce_cnvs = reduce(overlapping_cnvs)
+```
+
+## Graph-based approach?
+
+```{r}
+# here: continue from filtered "hitsgr_df" from above
+# Build graph from edges
+g = graph_from_data_frame(d = hits_df[, c("queryHits", "subjectHits")], directed = FALSE, vertices = seq_along(gr))
+
+# Step 5: Find maximal cliques of size >= 2
+cliques = max.cliques(g, min = 2)
+
+# Optional: Filter cliques by size or other criteria
+# For example, only keep cliques with all nodes overlapping pairwise >70%
+# (maximal.cliques guarantees that all nodes in clique are connected)
+
+# Step 6: Get the sequences involved in any clique
+clique_indices = unique(unlist(cliques))
+
+# Subset gr to only sequences involved in at least one clique
+overlapping_sequences = gr[clique_indices]
+
+
+```
+
+```{r}
+# try reducing overlapping sequences
+red_overlapping_seqs = reduce(overlapping_sequences)
+```
+
+```{r}
+clique_gr_list = lapply(cliques, function(clique_vertices) {
+  gr[clique_vertices]
+})
+
+# Now you have a list of GRanges, each corresponding to one clique
+
+# Apply reduce() per clique to merge overlapping ranges within each clique
+reduced_cliques = lapply(clique_gr_list, reduce)
+
+# Optional: remove empty cliques or filter by size
+#reduced_cliques <- Filter(length, reduced_cliques)
+```
+
+```{r}
+clique_gr_list = lapply(cliques, function(clique_vertices) {
+  gr[as.integer(clique_vertices)]  # convert igraph.vs to integer indices
+})
+
+# Then apply reduce as before
+reduced_cliques = lapply(clique_gr_list, reduce)
 
 ```
