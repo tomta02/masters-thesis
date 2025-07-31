@@ -1,0 +1,73 @@
+---
+title: "20250702_pathway_analysis_progeny"
+author: "Tatjana Tomek"
+format: html
+editor: visual
+---
+
+## Pathway analysis on Visium data using PROGENy + decoupleR
+
+investigating biological pathway enrichment in patient Visium datasets
+
+```{r}
+# load libraries
+library(Seurat)
+library(qs)
+library(Matrix)
+library(hdf5r)
+library(decoupleR)
+library(dplyr)
+library(tibble)
+library(tidyr)
+library(patchwork)
+library(ggplot2)
+library(pheatmap)
+```
+
+```{r}
+# loading Visium data
+visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_10_visium_flt.qs", nthreads = 32)
+```
+
+```{r}
+# load progeny: pathways, target genes and weights
+pr = get_progeny(organism = 'human', top = 500)
+```
+
+Now, to infer pathway scores, need the info stored in progeny and apply it to our patient data applying a statistical model -\> use multivariate linear model (like in vignette), but there are others available too
+
+```{r}
+# first, extract sct-transformed count matrices. Maybe run on log norm. count matrices later
+sct_list = lapply(visiumlist, function(seu) {
+  sctmat = as.matrix(seu@assays$SCT$data)
+})
+rm(visiumlist)
+gc()
+```
+
+```{r}
+# concatenate individual ROI-matrices per patient. 22 count matrices -> 6 count matrices
+pat_ids = sub("_.*", "", names(sct_list)) %>% unique()
+
+master_list = list()
+for (id in pat_ids) {
+  s_indices = grep(id, names(sct_list))
+  samples = sct_list[s_indices]
+  concat = do.call(cbind, samples) 
+  master_list[[id]] = concat
+}
+```
+
+```{r}
+# run linear model on all pat
+pw_lst = lapply(master_list, function(pat) {
+  acts = run_mlm(mat = pat,
+                 net = pr,
+                 .source = "source",
+                 .target = "target",
+                 .mor = "weight",
+                 minsize = 5)
+})
+```
+
+Plotting
