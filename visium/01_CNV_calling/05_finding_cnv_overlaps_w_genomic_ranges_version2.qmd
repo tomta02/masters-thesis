@@ -1,0 +1,71 @@
+---
+title: "20250720_finding_cnv_overlaps_v2"
+author: "Tatjana"
+format: html
+editor: visual
+---
+
+## Computing CNV overlaps with GenomicRanges - version 2
+
+after chatting w Kristy on 31.07, try out a new strategy for overlapping CNVs that were called using the "spot-based" CNV analysis.
+
+```{r}
+library(tidyverse)
+library(magrittr)
+library(qs)
+library(GenomicRanges)
+```
+
+```{r}
+# function to use = "disjoin" - try on small sample to investigate behavior 
+```
+
+```{r}
+test = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/LN0040HD/LN0040HD_12BV2R_R1/HMM_CNV_predictions.HMMi6.hmm_mode-cells.Pnorm_0.5.pred_cnv_regions.dat", header = TRUE)
+```
+
+```{r}
+test_subset_to_keep = grep(paste0("^", "LN0040HD", "_"), test$cell_group_name)
+test_flt = test[test_subset_to_keep, , drop=FALSE]
+```
+
+```{r}
+gr = GRanges(seqnames = test_flt$chr,
+             ranges = IRanges(
+               start = test_flt$start,
+               end = test_flt$end,
+               names = test_flt$cnv_name),
+              barcode = test_flt$cell_group_name,
+              state = test_flt$state,
+              cnv_name = test_flt$cnv_name
+             )
+```
+
+```{r}
+dj = disjoin(gr)
+```
+
+Now: count how often each sequence chunk appears in "gr", by running "countOverlaps"
+
+```{r}
+ol = countOverlaps(dj, gr)
+mcols(dj)$count = ol
+```
+
+```{r}
+widths = width(dj)
+counts = mcols(dj)$count
+
+df = data.frame(width = widths, count = counts)
+
+# make hist of widths
+ggplot(df, aes(x = width)) +
+  geom_histogram(binwidth = 100000, aes(weight = count), fill = "steelblue", color = "black") +
+  theme_minimal() +
+  #scale_x_log10() +
+  labs(
+    title = "histogram of disjoined bin widths",
+    x = "binwidth (bp)",
+    y = "freq (weighted by overlaps)"
+  )
+```
