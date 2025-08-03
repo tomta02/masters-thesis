@@ -25,6 +25,7 @@ test = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/LN
 ```
 
 ```{r}
+test$width = test$end - test$start
 test_subset_to_keep = grep(paste0("^", "LN0040HD", "_"), test$cell_group_name)
 test_flt = test[test_subset_to_keep, , drop=FALSE]
 ```
@@ -39,6 +40,20 @@ gr = GRanges(seqnames = test_flt$chr,
               state = test_flt$state,
               cnv_name = test_flt$cnv_name
              )
+```
+
+First, plot size distribution of CNVs found
+
+```{r}
+ggplot(test_flt, aes(x = width)) +
+  geom_histogram(binwidth = 100000) +
+  theme_minimal() +
+  #scale_x_log10() +
+  labs(
+    title = "CNV sizes",
+    x = "binwidth (bp)",
+    y = "freq"
+  )
 ```
 
 ```{r}
