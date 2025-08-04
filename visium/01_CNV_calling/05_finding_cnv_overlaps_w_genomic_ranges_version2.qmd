@@ -17,70 +17,208 @@ library(GenomicRanges)
 ```
 
 ```{r}
-# function to use = "disjoin" - try on small sample to investigate behavior 
+# testing approach on a mini arbitrary sample to check how all functions behave
+grtest <- GRanges(
+    seqnames = Rle(c("chr1", "chr2", "chr1", "chr3"), c(1, 3, 2, 4)),
+    ranges = IRanges(101:110, end = 111:120, names = head(letters, 10)),
+    strand = Rle(strand(c("*")), c(10)),
+    score = 1:10,
+    GC = seq(1, 0, length=10))
+grtest = grtest[1:6]
 ```
 
 ```{r}
+djtest = disjoin(grtest)
+```
+
+```{r}
+oltest = countOverlaps(djtest, grtest)
+mcols(djtest)$count = oltest
+```
+
+```{r}
+# make df of the data we are interested in
+dftest = data.frame("width" = djtest@ranges@width, "count" = djtest$count)
+
+# plot histogram of widths, weightes by counts
+ggplot(data = dftest, 
+       mapping = aes(x = width, weight = count)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", color = "black") +
+  theme_minimal() +
+  labs(
+    title = "Histogram of bin widths",
+    x = "width of bin (bp)",
+    y = "frequency"
+  )
+
+# looks as expected, now proceed with patint samplesß
+```
+
+```{r}
+# test sample of 1 patient
 test = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/LN0040HD/LN0040HD_12BV2R_R1/HMM_CNV_predictions.HMMi6.hmm_mode-cells.Pnorm_0.5.pred_cnv_regions.dat", header = TRUE)
 ```
 
 ```{r}
 test$width = test$end - test$start
+test$width_kb = (test$width)/1000
 test_subset_to_keep = grep(paste0("^", "LN0040HD", "_"), test$cell_group_name)
 test_flt = test[test_subset_to_keep, , drop=FALSE]
+test_flt_lst = split(test_flt, test_flt$chr)
 ```
 
 ```{r}
-gr = GRanges(seqnames = test_flt$chr,
-             ranges = IRanges(
-               start = test_flt$start,
-               end = test_flt$end,
-               names = test_flt$cnv_name),
-              barcode = test_flt$cell_group_name,
-              state = test_flt$state,
-              cnv_name = test_flt$cnv_name
-             )
+#gr = GRanges(seqnames = test_flt$chr,
+             #ranges = IRanges(
+               #start = test_flt$start,
+               #end = test_flt$end,
+               #names = test_flt$cnv_name),
+              #barcode = test_flt$cell_group_name,
+              #state = test_flt$state,
+              #cnv_name = test_flt$cnv_name
+             #)
+```
+
+```{r}
+gr_list = lapply(test_flt_lst, function(bc) {
+  GRanges(
+    seqnames = bc$chr,
+    ranges = IRanges(
+      start = bc$start,
+      end = bc$end, 
+      names = bc$cnv_name),
+    barcode = bc$cell_group_name,
+    state = bc$state,
+    cnv_name = bc$cnv_name
+    )
+  })
 ```
 
 First, plot size distribution of CNVs found
 
 ```{r}
-ggplot(test_flt, aes(x = width)) +
-  geom_histogram(binwidth = 100000) +
+ggplot(test_flt_lst[[1]], aes(x = width_kb)) +
+  geom_histogram(binwidth = 1000) +
   theme_minimal() +
   #scale_x_log10() +
   labs(
     title = "CNV sizes",
-    x = "binwidth (bp)",
+    x = "cnv size (kb)",
     y = "freq"
   )
 ```
 
 ```{r}
-dj = disjoin(gr)
+dj_list = lapply(gr_list, function(gr_obj) {
+  dj = disjoin(gr_obj)
+})
+
+#dj = disjoin(gr)
 ```
 
 Now: count how often each sequence chunk appears in "gr", by running "countOverlaps"
 
 ```{r}
-ol = countOverlaps(dj, gr)
-mcols(dj)$count = ol
+ol_list = mapply(function(dj_obj, gr_obj) {
+  overlap = countOverlaps(dj_obj, gr_obj)
+  mcols(dj_obj)$count = overlap
+  dj_obj
+}, dj_list, gr_list)
+
+#ol = countOverlaps(dj, gr)
+#mcols(dj)$count = ol
+```
+
+Next, make df of data we want to plot
+
+```{r}
+df = data.frame(
+  "width_kb" = (ol_list[[1]]@ranges@width)/1000,
+  "count" = ol_list[[1]]$count)
+
+df = df[order(df$count, decreasing = TRUE),]
 ```
 
 ```{r}
-widths = width(dj)
-counts = mcols(dj)$count
+# make plot
+ggplot(data = df,
+       mapping = aes(x = width_kb, weight = count)) +
+  geom_histogram(binwidth = 200) +
+  #scale_x_continuous(trans='log10')
+  theme_minimal()
+```
 
-df = data.frame(width = widths, count = counts)
+```{r}
+# make log10-transformed width colum; filter out zero or negative values
+df$log_width_kb <- log10(df$width_kb[df$width_kb > 0])
 
-# make hist of widths
-ggplot(df, aes(x = width)) +
-  geom_histogram(binwidth = 100000, aes(weight = count), fill = "steelblue", color = "black") +
-  theme_minimal() +
-  #scale_x_log10() +
-  labs(
-    title = "histogram of disjoined bin widths",
-    x = "binwidth (bp)",
-    y = "freq (weighted by overlaps)"
-  )
+ggplot(df, aes(x = log_width_kb, weight = count)) +
+  geom_histogram(binwidth = 0.1) +  # tomatch logscale
+  xlab("log10(width [kb])") +
+  theme_minimal()
+
+```
+
+```{r}
+ol_list_chr1 =  ol_list[[1]]
+ol_list_chr1 = ol_list_chr1[order(ol_list_chr1@ranges@width)]
+```
+
+```{r}
+ol_list_chr1 = ol_list_chr1[order(ol_list_chr1$count, decreasing = TRUE)]
+```
+
+```{r}
+# looking at count distribution of counts found on chr1
+counthist_chr1 = hist(df$count)
+```
+
+remove sequnces that were found in \< 200 cnvs
+
+```{r}
+ol_list_chr1 = ol_list_chr1[ol_list_chr1$count > 200]
+df_trimmed = data.frame(
+  "width_kb" = (ol_list_chr1@ranges@width)/1000,
+  "count" = ol_list_chr1$count)
+```
+
+```{r}
+counthist_chr1 = hist(df_trimmed$count)
+```
+
+```{r}
+try_reduce = reduce(ol_list_chr1)
+```
+
+```{r}
+try_reduce$cnv_state = c("del", "del", "del", "del")
+```
+
+```{r}
+# make gtrellis plot
+pdf("/g/saka/Tatjana/data/data_for_testing_stuff/LN0040HD_R1_cnv_test.pdf", width = 15, height = 4)
+
+col_fun = c("amp" = "red", "del" = "blue")
+
+
+gtrellis_layout(
+  add_name_track = TRUE,
+  n_track = 1, 
+  equal_width = TRUE,
+  title = "CNVs inferred using inferCNV - LN0040HD R1", 
+  track_ylab = c("inferCNV"), 
+  track_axis = FALSE,
+  xlab = "")
+
+add_rect_track(
+  try_reduce,
+  track = 2,
+  h1 = 1, 
+  h2 = 0,
+  gp = gpar(col = NA, fill = col_fun[mcols(try_reduce)$cnv_state])
+)
+
+dev.off()
+
+## it worked!! we could recover all cnvs that we expected for chromosome 1 in this patient sample - do for all samples & clean up
 ```
