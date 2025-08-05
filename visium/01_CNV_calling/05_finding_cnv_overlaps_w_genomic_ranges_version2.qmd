@@ -17,44 +17,6 @@ library(GenomicRanges)
 ```
 
 ```{r}
-# testing approach on a mini arbitrary sample to check how all functions behave
-grtest <- GRanges(
-    seqnames = Rle(c("chr1", "chr2", "chr1", "chr3"), c(1, 3, 2, 4)),
-    ranges = IRanges(101:110, end = 111:120, names = head(letters, 10)),
-    strand = Rle(strand(c("*")), c(10)),
-    score = 1:10,
-    GC = seq(1, 0, length=10))
-grtest = grtest[1:6]
-```
-
-```{r}
-djtest = disjoin(grtest)
-```
-
-```{r}
-oltest = countOverlaps(djtest, grtest)
-mcols(djtest)$count = oltest
-```
-
-```{r}
-# make df of the data we are interested in
-dftest = data.frame("width" = djtest@ranges@width, "count" = djtest$count)
-
-# plot histogram of widths, weightes by counts
-ggplot(data = dftest, 
-       mapping = aes(x = width, weight = count)) +
-  geom_histogram(binwidth = 1, fill = "steelblue", color = "black") +
-  theme_minimal() +
-  labs(
-    title = "Histogram of bin widths",
-    x = "width of bin (bp)",
-    y = "frequency"
-  )
-
-# looks as expected, now proceed with patint samplesß
-```
-
-```{r}
 # test sample of 1 patient
 test = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/LN0040HD/LN0040HD_12BV2R_R1/HMM_CNV_predictions.HMMi6.hmm_mode-cells.Pnorm_0.5.pred_cnv_regions.dat", header = TRUE)
 ```
@@ -68,36 +30,36 @@ test_flt_lst = split(test_flt, test_flt$chr)
 ```
 
 ```{r}
-#gr = GRanges(seqnames = test_flt$chr,
-             #ranges = IRanges(
-               #start = test_flt$start,
-               #end = test_flt$end,
-               #names = test_flt$cnv_name),
-              #barcode = test_flt$cell_group_name,
-              #state = test_flt$state,
-              #cnv_name = test_flt$cnv_name
-             #)
+gr = GRanges(seqnames = test_flt$chr,
+             ranges = IRanges(
+               start = test_flt$start,
+               end = test_flt$end,
+               names = test_flt$cnv_name),
+              barcode = test_flt$cell_group_name,
+              state = test_flt$state,
+              cnv_name = test_flt$cnv_name
+             )
 ```
 
 ```{r}
-gr_list = lapply(test_flt_lst, function(bc) {
-  GRanges(
-    seqnames = bc$chr,
-    ranges = IRanges(
-      start = bc$start,
-      end = bc$end, 
-      names = bc$cnv_name),
-    barcode = bc$cell_group_name,
-    state = bc$state,
-    cnv_name = bc$cnv_name
-    )
-  })
+#gr_list = lapply(test_flt_lst, function(bc) {
+  #GRanges(
+    #seqnames = bc$chr,
+    #ranges = IRanges(
+      #start = bc$start,
+      #end = bc$end, 
+      #names = bc$cnv_name),
+    #barcode = bc$cell_group_name,
+    #state = bc$state,
+    #cnv_name = bc$cnv_name
+    #)
+  #})
 ```
 
 First, plot size distribution of CNVs found
 
 ```{r}
-ggplot(test_flt_lst[[1]], aes(x = width_kb)) +
+ggplot(test_flt, aes(x = width_kb)) +
   geom_histogram(binwidth = 1000) +
   theme_minimal() +
   #scale_x_log10() +
@@ -109,116 +71,174 @@ ggplot(test_flt_lst[[1]], aes(x = width_kb)) +
 ```
 
 ```{r}
-dj_list = lapply(gr_list, function(gr_obj) {
-  dj = disjoin(gr_obj)
-})
+#dj_list = lapply(gr_list, function(gr_obj) {
+  #dj = disjoin(gr_obj)
+#})
 
-#dj = disjoin(gr)
+dj = disjoin(gr, with.revmap = TRUE)
+
+mcols(dj) = do.call(rbind, lapply(mcols(dj)$revmap, function(i){
+  data.frame(
+    bc = paste(mcols(gr)$barcode[i], collapse=","),
+    state = paste(mcols(gr)$state[i], collapse=",")
+    )
+}))
 ```
 
 Now: count how often each sequence chunk appears in "gr", by running "countOverlaps"
 
 ```{r}
-ol_list = mapply(function(dj_obj, gr_obj) {
-  overlap = countOverlaps(dj_obj, gr_obj)
-  mcols(dj_obj)$count = overlap
-  dj_obj
-}, dj_list, gr_list)
+#ol_list = mapply(function(dj_obj, gr_obj) {
+  #overlap = countOverlaps(dj_obj, gr_obj)
+  #mcols(dj_obj)$count = overlap
+  #dj_obj
+#}, dj_list, gr_list)
 
-#ol = countOverlaps(dj, gr)
-#mcols(dj)$count = ol
+ol = countOverlaps(dj, gr)
+mcols(dj)$count = ol
 ```
 
 Next, make df of data we want to plot
 
 ```{r}
 df = data.frame(
-  "width_kb" = (ol_list[[1]]@ranges@width)/1000,
-  "count" = ol_list[[1]]$count)
+  "chr" = dj@seqnames,
+  "start" = dj@ranges@start,
+  "width_kb" = (dj@ranges@width)/1000,
+  "end" = (dj@ranges@start + dj@ranges@width),
+  "count" = dj$count)
 
 df = df[order(df$count, decreasing = TRUE),]
 ```
 
+\
+Now, make plots to investigate the counts per chunk for each chromosome
+
 ```{r}
-# make plot
+seqchunkfreq = ggplot(df, aes(x = count)) +
+  geom_histogram(binwidth = 10) +
+  facet_wrap(~ chr, scales = "free_x") +
+  theme_minimal()
+ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/LN0040HD_12BV2R_R1_sequence_chunk_frequencies.png", seqchunkfreq )
+```
+
+```{r}
+seqchunkfreq
+# maybe reorder so chromosoms are arrangced in ascending not random
+```
+
+```{r}
+# combined plot of "counts per bin"
 ggplot(data = df,
-       mapping = aes(x = width_kb, weight = count)) +
-  geom_histogram(binwidth = 200) +
+       mapping = aes(x = count)) +
+  geom_histogram(binwidth = 20) +
   #scale_x_continuous(trans='log10')
   theme_minimal()
 ```
 
 ```{r}
-# make log10-transformed width colum; filter out zero or negative values
-df$log_width_kb <- log10(df$width_kb[df$width_kb > 0])
+# remove sequnces that were found in < 200 spots
+# dj_trimmed = dj[dj$count > 300,]
 
-ggplot(df, aes(x = log_width_kb, weight = count)) +
-  geom_histogram(binwidth = 0.1) +  # tomatch logscale
-  xlab("log10(width [kb])") +
-  theme_minimal()
+# note: the above did not work, way too conservative ... try to find a more generalizable approach of cleaning up data 
+# -> look at number of chunks found in total
+
+# to do so: first split by chr
+df_split = split(df, df$chr)
+
+for (i in seq_along(df_split)) {
+  print(nrow(df_split[[i]]))
+}
+```
+
+```{r}
+# try out: remove 10% of sequence bins with the lowest count frequency
+rmv_lowest_10pct = function(datafr) {
+  datafr_splt = split(datafr, datafr$chr)
+  
+  for (i in seq_along(datafr_splt)) {
+    # get the nr of rows that is equal to 10 %
+    chr_df = datafr_splt[[i]]
+    
+    rownr_10pct = floor((nrow(chr_df)) * 0.1)
+    # print(rownr_10pct)
+    # now, sort dfs by their bin count frequencies
+    chr_df = chr_df[order(chr_df$count), ]
+    
+    # now, of the sorted dataframes, remove the first 10% of sequences (i.e. the sequences with the lowest nr of counts)
+    if (rownr_10pct > 0) {
+      chr_df = chr_df[-seq_len(rownr_10pct), ]
+    }
+    
+    datafr_splt[[i]] = chr_df
+  }
+    
+  datafr_clean = do.call("rbind", datafr_splt)
+  return(datafr_clean)
+}
+```
+
+```{r}
+# apply GenomicRanges::reduce to see whether qc/noise removal step was sufficient
+red = reduce(dj_trimmed, with.revmap = TRUE)
+
+mcols(red) = do.call(rbind, lapply(mcols(red)$revmap, function(i){
+  data.frame(
+    bc = paste(mcols(dj)$bc[i], collapse=","),
+    state = paste(mcols(dj)$state[i], collapse=",")
+    )
+}))
+
+
+# some states are amp, some del... think about how to deal with this -> do a max vote?
+# -> not doing majority vote as of now, will just export as is and brainstorm w Kristy
+```
+
+```{r}
+# look at all the states of each CNV:
+get_states = function(gr_obj) {
+  splitstates = strsplit(gr_obj$state, ",")
+  allstates = unlist(splitstates)
+  summarycounts = table(allstates)
+  summarycounts 
+}
+
+states_res = lapply(seq_along(red), function(i) {
+  get_states(red[i])
+})
+```
+
+What next?
+
+1.) expand red, make gtrellis plots with it
+
+```{r}
+# extract metadata
+expanded_list = lapply(seq_along(red), function(i) {
+  bc_vec = unlist(strsplit(mcols(red[i])$bc, ","))
+  state_vec = unlist(strsplit(mcols(red[i])$state, ","))
+
+  # repeat GRanges row 'i' for each barcode
+  n = length(bc_vec)
+  gr = red[i]
+  gr_expanded = rep(gr, n)
+
+  # update metadata
+  mcols(gr_expanded)$bc = bc_vec
+  mcols(gr_expanded)$state = state_vec
+
+  return(gr_expanded)
+})
+
+# combine all into 1 GRanges
+red_expanded = do.call(c, expanded_list)
 
 ```
 
 ```{r}
-ol_list_chr1 =  ol_list[[1]]
-ol_list_chr1 = ol_list_chr1[order(ol_list_chr1@ranges@width)]
-```
-
-```{r}
-ol_list_chr1 = ol_list_chr1[order(ol_list_chr1$count, decreasing = TRUE)]
-```
-
-```{r}
-# looking at count distribution of counts found on chr1
-counthist_chr1 = hist(df$count)
-```
-
-remove sequnces that were found in \< 200 cnvs
-
-```{r}
-ol_list_chr1 = ol_list_chr1[ol_list_chr1$count > 200]
-df_trimmed = data.frame(
-  "width_kb" = (ol_list_chr1@ranges@width)/1000,
-  "count" = ol_list_chr1$count)
-```
-
-```{r}
-counthist_chr1 = hist(df_trimmed$count)
-```
-
-```{r}
-try_reduce = reduce(ol_list_chr1)
-```
-
-```{r}
-try_reduce$cnv_state = c("del", "del", "del", "del")
-```
-
-```{r}
-# make gtrellis plot
-pdf("/g/saka/Tatjana/data/data_for_testing_stuff/LN0040HD_R1_cnv_test.pdf", width = 15, height = 4)
-
-col_fun = c("amp" = "red", "del" = "blue")
-
-
-gtrellis_layout(
-  add_name_track = TRUE,
-  n_track = 1, 
-  equal_width = TRUE,
-  title = "CNVs inferred using inferCNV - LN0040HD R1", 
-  track_ylab = c("inferCNV"), 
-  track_axis = FALSE,
-  xlab = "")
-
-add_rect_track(
-  try_reduce,
-  track = 2,
-  h1 = 1, 
-  h2 = 0,
-  gp = gpar(col = NA, fill = col_fun[mcols(try_reduce)$cnv_state])
-)
-
-dev.off()
-
-## it worked!! we could recover all cnvs that we expected for chromosome 1 in this patient sample - do for all samples & clean up
+# save expanded reduced object
+write.csv(
+  red_expanded,
+  file = "/g/saka/Tatjana/data/data_for_testing_stuff/spotbased_cnv_calling_script5_LN0040HD_12BV2R_R1.csv")
+# for doing some visualizations in another script
 ```
