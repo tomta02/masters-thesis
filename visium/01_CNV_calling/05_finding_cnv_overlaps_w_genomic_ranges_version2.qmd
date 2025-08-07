@@ -14,6 +14,7 @@ library(tidyverse)
 library(magrittr)
 library(qs)
 library(GenomicRanges)
+library(tidyverse)
 ```
 
 ```{r}
@@ -24,9 +25,9 @@ test = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/LN
 ```{r}
 test$width = test$end - test$start
 test$width_kb = (test$width)/1000
+
 test_subset_to_keep = grep(paste0("^", "LN0040HD", "_"), test$cell_group_name)
 test_flt = test[test_subset_to_keep, , drop=FALSE]
-test_flt_lst = split(test_flt, test_flt$chr)
 ```
 
 ```{r}
@@ -42,23 +43,7 @@ gr = GRanges(seqnames = test_flt$chr,
 ```
 
 ```{r}
-#gr_list = lapply(test_flt_lst, function(bc) {
-  #GRanges(
-    #seqnames = bc$chr,
-    #ranges = IRanges(
-      #start = bc$start,
-      #end = bc$end, 
-      #names = bc$cnv_name),
-    #barcode = bc$cell_group_name,
-    #state = bc$state,
-    #cnv_name = bc$cnv_name
-    #)
-  #})
-```
-
-First, plot size distribution of CNVs found
-
-```{r}
+# First, plot size distribution of CNVs found
 ggplot(test_flt, aes(x = width_kb)) +
   geom_histogram(binwidth = 1000) +
   theme_minimal() +
@@ -70,37 +55,34 @@ ggplot(test_flt, aes(x = width_kb)) +
   )
 ```
 
-```{r}
-#dj_list = lapply(gr_list, function(gr_obj) {
-  #dj = disjoin(gr_obj)
-#})
+Disjoin genomic ranges -\> divide sequences found into non-overlapping "chunks"
 
+```{r}
+# disjoin. Reverse mapping = true, to keep metadata
 dj = disjoin(gr, with.revmap = TRUE)
 
-mcols(dj) = do.call(rbind, lapply(mcols(dj)$revmap, function(i){
-  data.frame(
-    bc = paste(mcols(gr)$barcode[i], collapse=","),
-    state = paste(mcols(gr)$state[i], collapse=",")
-    )
-}))
+mcols(dj) = do.call(rbind, 
+                    lapply(mcols(dj)$revmap, function(i){
+                      data.frame(
+                        bc = paste(mcols(gr)$barcode[i], collapse=","),
+                        state = paste(mcols(gr)$state[i], collapse=",")
+                        )
+                      })
+                    )
+
 ```
 
 Now: count how often each sequence chunk appears in "gr", by running "countOverlaps"
 
 ```{r}
-#ol_list = mapply(function(dj_obj, gr_obj) {
-  #overlap = countOverlaps(dj_obj, gr_obj)
-  #mcols(dj_obj)$count = overlap
-  #dj_obj
-#}, dj_list, gr_list)
-
 ol = countOverlaps(dj, gr)
 mcols(dj)$count = ol
 ```
 
-Next, make df of data we want to plot
+#### Next, make some plots
 
 ```{r}
+# make df of the data we want to plot
 df = data.frame(
   "chr" = dj@seqnames,
   "start" = dj@ranges@start,
@@ -115,20 +97,17 @@ df = df[order(df$count, decreasing = TRUE),]
 Now, make plots to investigate the counts per chunk for each chromosome
 
 ```{r}
-seqchunkfreq = ggplot(df, aes(x = count)) +
+chunkfreq = ggplot(df, aes(x = count)) +
   geom_histogram(binwidth = 10) +
   facet_wrap(~ chr, scales = "free_x") +
   theme_minimal()
-ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/LN0040HD_12BV2R_R1_sequence_chunk_frequencies.png", seqchunkfreq )
+#ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/LN0040HD_12BV2R_R1_sequence_chunk_frequencies.png", chunkfreq )
+
+chunkfreq
 ```
 
 ```{r}
-seqchunkfreq
-# maybe reorder so chromosoms are arrangced in ascending not random
-```
-
-```{r}
-# combined plot of "counts per bin"
+# combined plot of "counts per bin" across all chromosomes
 ggplot(data = df,
        mapping = aes(x = count)) +
   geom_histogram(binwidth = 20) +
@@ -136,62 +115,66 @@ ggplot(data = df,
   theme_minimal()
 ```
 
+#### Clean up disjoined genomic ranges
+
+\- remove chunks that appear with very low frequency (most likely noise) - across all chromosomes
+
 ```{r}
-# remove sequnces that were found in < 200 spots
-# dj_trimmed = dj[dj$count > 300,]
-
-# note: the above did not work, way too conservative ... try to find a more generalizable approach of cleaning up data 
-# -> look at number of chunks found in total
-
-# to do so: first split by chr
-df_split = split(df, df$chr)
-
-for (i in seq_along(df_split)) {
-  print(nrow(df_split[[i]]))
-}
+# # try out: remove 20% of sequence bins with the lowest count frequency for each chromosome
+# rmv_lowest_20pct = function(g_ranges) {
+#   
+#   ## split granges per chrom
+#   g_ranges_splt = split(g_ranges, g_ranges@seqnames)
+#   
+#   for (i in seq_along(g_ranges_splt)) {
+#     
+#     # for each chr: get the nr of rows that is equal to 10 %
+#     chr_gr = g_ranges_splt[[i]]
+#     rownr_20pct = floor((length(chr_gr)) * 0.2)
+#     # print(rownr_10pct)
+#     
+#     # now, sort dfs by their bin count frequencies (lowest to highest) - so we can rmv bins with lowest count frequency
+#     chr_gr = chr_gr[order(chr_gr$count), ]
+#     
+#     # now, of the sorted dataframes, remove the first 10% of sequences (i.e. the sequences with the lowest nr of counts)
+#     if (rownr_20pct > 0) {
+#       chr_gr = chr_gr[-seq_len(rownr_20pct), ]
+#     }
+#     
+#     g_ranges_splt[[i]] = chr_gr
+#   }
+#     
+#   gr_clean = unlist(g_ranges_splt, use.names = FALSE)
+#   return(gr_clean)
+# }
 ```
 
 ```{r}
-# try out: remove 10% of sequence bins with the lowest count frequency
-rmv_lowest_10pct = function(datafr) {
-  datafr_splt = split(datafr, datafr$chr)
-  
-  for (i in seq_along(datafr_splt)) {
-    # get the nr of rows that is equal to 10 %
-    chr_df = datafr_splt[[i]]
-    
-    rownr_10pct = floor((nrow(chr_df)) * 0.1)
-    # print(rownr_10pct)
-    # now, sort dfs by their bin count frequencies
-    chr_df = chr_df[order(chr_df$count), ]
-    
-    # now, of the sorted dataframes, remove the first 10% of sequences (i.e. the sequences with the lowest nr of counts)
-    if (rownr_10pct > 0) {
-      chr_df = chr_df[-seq_len(rownr_10pct), ]
-    }
-    
-    datafr_splt[[i]] = chr_df
-  }
-    
-  datafr_clean = do.call("rbind", datafr_splt)
-  return(datafr_clean)
-}
+# ditch "per chromosome removal" strategy as not necessary - as there is not supposed to be CNVs in each chromosome, just keep 25% of fractions with the highest "count" (i.e. they are present in most spots)
+
+# calc 75th percentile (top 25%) threshold
+thresh = quantile(mcols(dj)$count, 0.75, na.rm = TRUE)
+dj_clean = dj[mcols(dj)$count >= thresh]
 ```
 
 ```{r}
 # apply GenomicRanges::reduce to see whether qc/noise removal step was sufficient
-red = reduce(dj_trimmed, with.revmap = TRUE)
-
-mcols(red) = do.call(rbind, lapply(mcols(red)$revmap, function(i){
-  data.frame(
-    bc = paste(mcols(dj)$bc[i], collapse=","),
-    state = paste(mcols(dj)$state[i], collapse=",")
-    )
-}))
+red = reduce(dj_clean) #, with.revmap = TRUE)
+# 
+# mcols(red) = do.call(rbind,
+#                      lapply(mcols(red)$revmap, function(i) { 
+#                        data.frame(
+#                          bc = paste(mcols(dj_clean)$bc[i], collapse=","),
+#                          state = paste(mcols(dj_clean)$state[i], collapse=",")
+#                          )
+#                        })
+#                      )
 
 
 # some states are amp, some del... think about how to deal with this -> do a max vote?
 # -> not doing majority vote as of now, will just export as is and brainstorm w Kristy
+
+## DO NOT REDUCE WITH METADATA FOR NOW- just reduce as simple granges object
 ```
 
 ```{r}
@@ -210,35 +193,64 @@ states_res = lapply(seq_along(red), function(i) {
 
 What next?
 
-1.) expand red, make gtrellis plots with it
+1.) expand cleaned disjoined fragments (dj_clean), make gtrellis plots with it
 
 ```{r}
 # extract metadata
-expanded_list = lapply(seq_along(red), function(i) {
-  bc_vec = unlist(strsplit(mcols(red[i])$bc, ","))
-  state_vec = unlist(strsplit(mcols(red[i])$state, ","))
+expanded_list = lapply(seq_along(dj_clean), function(i) {
+  bc_vec = unlist(strsplit(mcols(dj_clean[i])$bc, ","))
+  state_vec = unlist(strsplit(mcols(dj_clean[i])$state, ","))
 
-  # repeat GRanges row 'i' for each barcode
+  # repeat geanges row [i] for each barcode
   n = length(bc_vec)
-  gr = red[i]
+  gr = dj_clean[i]
   gr_expanded = rep(gr, n)
 
-  # update metadata
+  # updatemetadata
   mcols(gr_expanded)$bc = bc_vec
   mcols(gr_expanded)$state = state_vec
 
   return(gr_expanded)
 })
 
-# combine all into 1 GRanges
-red_expanded = do.call(c, expanded_list)
+## combine all into 1 GRanges
+dj_clean_expanded = do.call(c, expanded_list)
 
 ```
 
+Now, convert expanded reduced granges to bed-style format
+
 ```{r}
-# save expanded reduced object
+# first, convert it to df
+gr_df = data.frame(
+  "chr" = dj_clean_expanded@seqnames,
+  "start" = dj_clean_expanded@ranges@start,
+  "end" = (dj_clean_expanded@ranges@start + dj_clean_expanded@ranges@width),
+  "width" = dj_clean_expanded@ranges@width,
+  "width_kb" = (dj_clean_expanded@ranges@width)/1000,
+  "strand" = dj_clean_expanded@strand,
+  "barcode" = dj_clean_expanded$bc,
+  "state" = dj_clean_expanded$state
+)
+```
+
+```{r}
+# Reshape into sparse BED-like format
+gr_df_wide = gr_df %>%
+  pivot_wider(
+    names_from = barcode,
+    values_from = state,
+    values_fn = list(state = ~paste(., collapse = ",")),
+    # fill missing vals with na
+    values_fill = NA  
+  )
+```
+
+```{r}
+# save object
 write.csv(
-  red_expanded,
-  file = "/g/saka/Tatjana/data/data_for_testing_stuff/spotbased_cnv_calling_script5_LN0040HD_12BV2R_R1.csv")
+  gr_df_wide,
+  file = "/g/saka/Tatjana/data/data_for_testing_stuff/20250805_spotbased_cnv_calling_script5_LN0040HD_12BV2R_R1.csv",
+  row.names = FALSE)
 # for doing some visualizations in another script
 ```
