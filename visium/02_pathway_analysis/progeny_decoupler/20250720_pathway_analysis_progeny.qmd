@@ -22,6 +22,7 @@ library(tidyr)
 library(patchwork)
 library(ggplot2)
 library(pheatmap)
+library(gridExtra)
 ```
 
 ```{r}
@@ -71,3 +72,43 @@ pw_lst = lapply(master_list, function(pat) {
 ```
 
 Plotting
+
+```{r}
+# investigating output of singular patient sample
+pw_lst_test = pw_lst[[1]]
+```
+
+```{r}
+# mutate pw_lst_test 
+pw_lst_test = pw_lst_test %>% 
+  pivot_wider(id_cols = 'condition',
+              names_from = 'source',
+              values_from = 'score') %>%
+  tibble::column_to_rownames(var = 'condition') 
+```
+
+```{r}
+pw_lst_ref = lapply(pw_lst, function(df) {
+  df %>% pivot_wider(
+    id_cols = 'condition',
+    names_from = 'source',
+    values_from = 'score') %>%
+    tibble::column_to_rownames(var = 'condition')
+})
+```
+
+```{r}
+# generate all pheatmaps into a list
+plots <- mapply(function(mat, nm) {
+  pheatmap(
+    mat, 
+    show_rownames = FALSE, 
+    silent = TRUE,
+    cluster_cols = FALSE,
+    main = nm)
+}, pw_lst_ref, names(pw_lst_ref), SIMPLIFY = FALSE)
+
+# arrange in grid
+grid.arrange(grobs = lapply(plots, function(p) p$gtable), ncol = 3)
+
+```
