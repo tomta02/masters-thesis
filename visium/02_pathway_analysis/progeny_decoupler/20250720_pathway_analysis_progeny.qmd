@@ -23,6 +23,7 @@ library(patchwork)
 library(ggplot2)
 library(pheatmap)
 library(gridExtra)
+library(funkyheatmap)
 ```
 
 ```{r}
@@ -32,7 +33,7 @@ visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_10_visiu
 
 ```{r}
 # load progeny: pathways, target genes and weights
-pr = get_progeny(organism = 'human', top = 500)
+pr = get_progeny(organism = 'human', top = 100)
 ```
 
 Now, to infer pathway scores, need the info stored in progeny and apply it to our patient data applying a statistical model -\> use multivariate linear model (like in vignette), but there are others available too
@@ -74,21 +75,8 @@ pw_lst = lapply(master_list, function(pat) {
 Plotting
 
 ```{r}
-# investigating output of singular patient sample
-pw_lst_test = pw_lst[[1]]
-```
-
-```{r}
-# mutate pw_lst_test 
-pw_lst_test = pw_lst_test %>% 
-  pivot_wider(id_cols = 'condition',
-              names_from = 'source',
-              values_from = 'score') %>%
-  tibble::column_to_rownames(var = 'condition') 
-```
-
-```{r}
-pw_lst_ref = lapply(pw_lst, function(df) {
+# first, modify data into a long dataframe for plotting - exctract pathway activities
+act_lst = lapply(pw_lst, function(df) {
   df %>% pivot_wider(
     id_cols = 'condition',
     names_from = 'source',
@@ -98,17 +86,76 @@ pw_lst_ref = lapply(pw_lst, function(df) {
 ```
 
 ```{r}
-# generate all pheatmaps into a list
-plots <- mapply(function(mat, nm) {
+# further, extract p values associated w pathway activities per visium spot
+pv_list = lapply(pw_lst, function(df) {
+  df %>% pivot_wider(
+    id_cols = 'condition',
+    names_from = 'source',
+    values_from = 'p_value') %>%
+    tibble::column_to_rownames(var = 'condition')
+})
+```
+
+```{r}
+# generate all pheatmaps plots into a list
+plots = mapply(function(mat, nm) {
   pheatmap(
     mat, 
     show_rownames = FALSE, 
     silent = TRUE,
     cluster_cols = FALSE,
     main = nm)
-}, pw_lst_ref, names(pw_lst_ref), SIMPLIFY = FALSE)
+}, act_lst, names(act_lst), SIMPLIFY = FALSE)
 
-# arrange in grid
+# open png 
+png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top100_genes/progeny_act_grid_top100.png", width = 4500, height = 3000, res = 300) 
+
+# to save them together: arrange in grid
 grid.arrange(grobs = lapply(plots, function(p) p$gtable), ncol = 3)
+dev.off()
+```
+
+```{r}
+for (idx in (seq_along(plots))) {
+  htmp = plots[[idx]]
+  
+  # open png
+  png(paste0("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top100_genes/heatmap_acts_s", idx, ".png"), 
+      width = 1500, 
+      height = 2000, 
+      res = 300)
+  
+  print(htmp)
+  
+  dev.off()
+}
+```
+
+```{r}
+# now make same plots for pvals:
+# generate all pval plots into a list
+plots_pv = mapply(function(mat, nm) {
+  pheatmap(
+    mat, 
+    color = c("red", "blue"),
+    breaks = c(0, 0.05, 1),
+    legend_breaks = c(0, 0.05, 0.2, 0.4, 0,6, 0.8),
+    main = nm,
+    show_rownames = FALSE, 
+    silent = TRUE,
+    cluster_cols = FALSE)
+}, pv_list, names(pv_list), SIMPLIFY = FALSE)
+
+# open png 
+png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top100_genes/progeny_pv_grid_top100.png", width = 4500, height = 3000, res = 300) 
+
+# to save them together: arrange in grid
+grid.arrange(grobs = lapply(plots_pv, function(p) p$gtable), ncol = 3)
+dev.off()
 
 ```
+
+Problem with this analysis: we need to plot one more property, which is p value (statistical significance of pathway being called), not possible with pheatmap (-\> check out other heatmap tools, mayb complexheatmap?) \
+
+1.  pvals per pw per spot often very high -\> try again running on bayesspace subclustered spots, perhaps pathway activity calling improves?
+2.  do morans I analysis to get spatial differential pathway activity
