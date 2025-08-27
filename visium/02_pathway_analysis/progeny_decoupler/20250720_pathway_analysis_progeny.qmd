@@ -28,12 +28,14 @@ library(funkyheatmap)
 
 ```{r}
 # loading Visium data
-visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_10_visium_flt.qs", nthreads = 32)
+visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_13_visium_flt.qs", nthreads = 32)
+testvis = visiumlist[[1]]
 ```
 
 ```{r}
 # load progeny: pathways, target genes and weights
-pr = get_progeny(organism = 'human', top = 100)
+pr = get_progeny(organism = 'human', top = 500)
+# sum(pr$weight == 0) checking whether beta coefficients of progeny model have been set to 0 for any of the genes (in paper, they only kept coeff of top 100 scoring genes). But is not the case
 ```
 
 Now, to infer pathway scores, need the info stored in progeny and apply it to our patient data applying a statistical model -\> use multivariate linear model (like in vignette), but there are others available too
@@ -43,14 +45,14 @@ Now, to infer pathway scores, need the info stored in progeny and apply it to ou
 sct_list = lapply(visiumlist, function(seu) {
   sctmat = as.matrix(seu@assays$SCT$data)
 })
-rm(visiumlist)
-gc()
+
 ```
 
 ```{r}
-# concatenate individual ROI-matrices per patient. 22 count matrices -> 6 count matrices
+# get patient ids
 pat_ids = sub("_.*", "", names(sct_list)) %>% unique()
 
+# concatenate individual ROI-matrices per patient. 22 count matrices -> 6 count matrices (1 per patient)
 master_list = list()
 for (id in pat_ids) {
   s_indices = grep(id, names(sct_list))
@@ -61,7 +63,25 @@ for (id in pat_ids) {
 ```
 
 ```{r}
-# run linear model on all pat
+# make list of annotations for plotting spatial domain in heatmap later
+annotlist = lapply(visiumlist, function(seu) {
+  annot = as.matrix(seu@meta.data$prelim_growth_2)
+})
+
+masterannot = list()
+for (id in pat_ids) {
+  s_indices = grep(id, names(annotlist))
+  samples = annotlist[s_indices]
+  concat = do.call(rbind, samples)
+  masterannot[[id]] = concat
+}
+
+rm(visiumlist)
+gc()
+```
+
+```{r}
+# run linear model on all patients
 pw_lst = lapply(master_list, function(pat) {
   acts = run_mlm(mat = pat,
                  net = pr,
@@ -86,8 +106,22 @@ act_lst = lapply(pw_lst, function(df) {
 ```
 
 ```{r}
+# add spatial domain identities as column to act_lst
+act_lst = mapply(function(acts, annots) {
+  acts$spat_domain = annots
+  acts
+}, act_lst, masterannot, SIMPLIFY = FALSE)
+```
+
+```{r}
+act_lst = lapply(act_lst, function(acts) {
+  acts = acts[order(acts$spat_domain),]
+})
+```
+
+```{r}
 # further, extract p values associated w pathway activities per visium spot
-pv_list = lapply(pw_lst, function(df) {
+pval_list = lapply(pw_lst, function(df) {
   df %>% pivot_wider(
     id_cols = 'condition',
     names_from = 'source',
@@ -97,18 +131,31 @@ pv_list = lapply(pw_lst, function(df) {
 ```
 
 ```{r}
+## CONTINUE HERE
+
 # generate all pheatmaps plots into a list
 plots = mapply(function(mat, nm) {
+  
+  ann_row = data.frame(mat$spat_domain)
+  rownames(ann_row) = rownames(mat)
+  
+  # drop annotation colum
+  mat_num = as.matrix(mat[ , !(colnames(mat) %in% "spat_domain")])
+  
+  
   pheatmap(
-    mat, 
+    mat_num, 
     show_rownames = FALSE, 
+    annotation_row = ann_row,
     silent = TRUE,
     cluster_cols = FALSE,
+    #cluster_rows = FALSE,
+    #cutree_rows = 2,
     main = nm)
 }, act_lst, names(act_lst), SIMPLIFY = FALSE)
 
 # open png 
-png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top100_genes/progeny_act_grid_top100.png", width = 4500, height = 3000, res = 300) 
+png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/progeny_act_grid_top500_w_spat_dom.png", width = 4500, height = 3000, res = 300) 
 
 # to save them together: arrange in grid
 grid.arrange(grobs = lapply(plots, function(p) p$gtable), ncol = 3)
@@ -116,11 +163,12 @@ dev.off()
 ```
 
 ```{r}
+# save individual heatmaps
 for (idx in (seq_along(plots))) {
   htmp = plots[[idx]]
   
   # open png
-  png(paste0("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top100_genes/heatmap_acts_s", idx, ".png"), 
+  png(paste0("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top1000_genes/run_on_sctransformed_mat/heatmap_acts_s", idx, ".png"), 
       width = 1500, 
       height = 2000, 
       res = 300)
@@ -147,7 +195,7 @@ plots_pv = mapply(function(mat, nm) {
 }, pv_list, names(pv_list), SIMPLIFY = FALSE)
 
 # open png 
-png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top100_genes/progeny_pv_grid_top100.png", width = 4500, height = 3000, res = 300) 
+png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top1000_genes/run_on_sctransformed_mat/progeny_pv_grid_top1000.png", width = 4500, height = 3000, res = 300) 
 
 # to save them together: arrange in grid
 grid.arrange(grobs = lapply(plots_pv, function(p) p$gtable), ncol = 3)
@@ -155,7 +203,16 @@ dev.off()
 
 ```
 
-Problem with this analysis: we need to plot one more property, which is p value (statistical significance of pathway being called), not possible with pheatmap (-\> check out other heatmap tools, mayb complexheatmap?) \
+Problem with this analysis: we need to plot one more property, which is p value (statistical significance of pathway being called), not possible with pheatmap (-\> check out other heatmap tools, mayb complexheatmap?)\
 
 1.  pvals per pw per spot often very high -\> try again running on bayesspace subclustered spots, perhaps pathway activity calling improves?
-2.  do morans I analysis to get spatial differential pathway activity
+
+    -\> for now now, aim to finish analysis of full visium spots first
+
+2.  do morans I analysis to get spatial differential pathway activity -\> extract spot coordinates w Seurat GetTissueCoordinates
+
+3.  TODO violin plots: 1 plot for each sample, 14 subplots for each pathway; each pw has nr. of violins = nr. of spatial domains -\> plot differential pw activity per spatial domain
+
+4.  code very redundant, simplify!!!
+
+5.  make 2 scripts out of this -\> one for running decoupleR, separate one(s) for plotting
