@@ -131,6 +131,22 @@ pval_list = lapply(pw_lst, function(df) {
 ```
 
 ```{r}
+# select colors for plots
+
+anncolors = list(
+  spatial_domain = c(
+    diffuse_fdc.hi = "#0072B2",
+    diffuse_fdc.lo = "#009E73",
+    follicular_fdc.hi = "#CC79A7",
+    follicular_fdc.lo = "#F0E442",
+    interfollicular_malig.hi = "#D55E00",
+    interfollicular_malig.lo = "#E69F00",
+    other = "#A6761D"
+  )
+)
+```
+
+```{r}
 ## CONTINUE HERE
 
 # generate all pheatmaps plots into a list
@@ -138,7 +154,7 @@ plots = mapply(function(mat, nm) {
   
   ann_row = data.frame(mat$spatial_domain)
   rownames(ann_row) = rownames(mat)
-  colnames(ann_row) <- "Spatial Domain"
+  colnames(ann_row) = "spatial_domain"
   
   # drop annotation colum
   mat_num = as.matrix(mat[ , !(colnames(mat) %in% "spatial_domain")])
@@ -148,6 +164,7 @@ plots = mapply(function(mat, nm) {
     mat_num, 
     show_rownames = FALSE, 
     annotation_row = ann_row,
+    annotation_colors = anncolors,
     silent = TRUE,
     cluster_cols = FALSE,
     clustering_method = "ward.D2",
