@@ -16,9 +16,7 @@ library(qs)
 library(Matrix)
 library(hdf5r)
 library(decoupleR)
-library(dplyr)
-library(tibble)
-library(tidyr)
+library(tidyverse)
 library(patchwork)
 library(ggplot2)
 library(pheatmap)
@@ -26,63 +24,49 @@ library(gridExtra)
 library(funkyheatmap)
 ```
 
+## 1. Pathway inference
+
 ```{r}
 # loading Visium data
 visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_13_visium_flt.qs", nthreads = 32)
-testvis = visiumlist[[1]]
 ```
 
 ```{r}
 # load progeny: pathways, target genes and weights
 pr = get_progeny(organism = 'human', top = 500)
+
 # sum(pr$weight == 0) checking whether beta coefficients of progeny model have been set to 0 for any of the genes (in paper, they only kept coeff of top 100 scoring genes). But is not the case
 ```
 
-Now, to infer pathway scores, need the info stored in progeny and apply it to our patient data applying a statistical model -\> use multivariate linear model (like in vignette), but there are others available too
-
 ```{r}
-# first, extract sct-transformed count matrices. Maybe run on log norm. count matrices later
-sct_list = lapply(visiumlist, function(seu) {
-  sctmat = as.matrix(seu@assays$SCT$data)
-})
+# first, extract sct-transformed count matrices. Maybe run on log norm. count matrices later. Also extract spatial domain annotations
+sct_list = map(visiumlist, ~ as.matrix(.x@assays$SCT$data))
+annot_list = map(visiumlist, ~ as.matrix(.x@meta.data$prelim_growth_2))
 
 ```
 
 ```{r}
 # get patient ids
 pat_ids = sub("_.*", "", names(sct_list)) %>% unique()
-
-# concatenate individual ROI-matrices per patient. 22 count matrices -> 6 count matrices (1 per patient)
-master_list = list()
-for (id in pat_ids) {
-  s_indices = grep(id, names(sct_list))
-  samples = sct_list[s_indices]
-  concat = do.call(cbind, samples) 
-  master_list[[id]] = concat
-}
 ```
 
 ```{r}
-# make list of annotations for plotting spatial domain in heatmap later
-annotlist = lapply(visiumlist, function(seu) {
-  annot = as.matrix(seu@meta.data$prelim_growth_2)
-})
+# concatenate individual ROI-matrices per patient. 22 count matrices -> 6 count matrices (1 per patient)
+pat_masterlist = map(pat_ids, ~ do.call(cbind, sct_list[grep(.x, names(sct_list))])) %>%
+  set_names(pat_ids)
 
-masterannot = list()
-for (id in pat_ids) {
-  s_indices = grep(id, names(annotlist))
-  samples = annotlist[s_indices]
-  concat = do.call(rbind, samples)
-  masterannot[[id]] = concat
-}
+# also concatenate spatial domains per patient
+master_annot = map(pat_ids, ~ do.call(rbind, annot_list[grep(.x, names(annot_list))])) %>%
+  set_names(pat_ids)
 
+# rm visiumlist to not run out of space
 rm(visiumlist)
 gc()
 ```
 
 ```{r}
-# run linear model on all patients
-pw_lst = lapply(master_list, function(pat) {
+# run linear model on all patients - infer pathway activities from gene expression information using pw x gene interaction weights stored in PROGENy
+pw_list = lapply(pat_masterlist, function(pat) {
   acts = run_mlm(mat = pat,
                  net = pr,
                  .source = "source",
@@ -92,46 +76,53 @@ pw_lst = lapply(master_list, function(pat) {
 })
 ```
 
-Plotting
+## 2. Plotting
+
+### 2.1 ) data wrangling to plot heatmap of pathway activities
 
 ```{r}
-# first, modify data into a long dataframe for plotting - exctract pathway activities
-act_lst = lapply(pw_lst, function(df) {
+# make helper funktion
+makewidefrompw = function(df, value_col) {
   df %>% pivot_wider(
     id_cols = 'condition',
     names_from = 'source',
-    values_from = 'score') %>%
+    values_from = {{value_col}}
+    ) %>% 
     tibble::column_to_rownames(var = 'condition')
+}
+```
+
+```{r}
+# use it to exctract pathway activities and p values from pw_list
+act_list = map(pw_list, makewidefrompw, value_col = score)
+pval_list = map(pw_list, makewidefrompw, value_col = p_value)
+```
+
+```{r}
+# add spatial domain identities as column to act_lst, and order rows
+act_list = map2(act_list, master_annot, ~ {
+  .x$spatial_domain <- .y
+  .x[order(.x$spatial_domain), ]
 })
 ```
 
 ```{r}
-# add spatial domain identities as column to act_lst
-act_lst = mapply(function(acts, annots) {
-  acts$spatial_domain = annots
-  acts
-}, act_lst, masterannot, SIMPLIFY = FALSE)
-```
-
-```{r}
-act_lst = lapply(act_lst, function(acts) {
-  acts = acts[order(acts$spatial_domain),]
+# also filter act_list based on pval: only keep activity values for each barcode and each pw where the pval < 0.05
+act_list_flt = lapply(seq_along(act_list), function(i) {
+  df = act_list[[i]]
+  pvals = pval_list[[i]]
+  
+  df[, 1:ncol(pvals)][pvals >= 0.05] <- NA
+  df
 })
+names(act_list_flt) = names(act_list)
 ```
 
-```{r}
-# further, extract p values associated w pathway activities per visium spot
-pval_list = lapply(pw_lst, function(df) {
-  df %>% pivot_wider(
-    id_cols = 'condition',
-    names_from = 'source',
-    values_from = 'p_value') %>%
-    tibble::column_to_rownames(var = 'condition')
-})
-```
+### 2.2. plot heatmaps
 
 ```{r}
-# select colors for plots
+# select colors for heatmap plots
+# mb ask Kristy for her color scheme, looks very nice
 
 anncolors = list(
   spatial_domain = c(
@@ -158,8 +149,8 @@ plots = mapply(function(mat, nm) {
   
   # drop annotation colum
   mat_num = as.matrix(mat[ , !(colnames(mat) %in% "spatial_domain")])
-  
-  
+  mat
+
   pheatmap(
     mat_num, 
     show_rownames = FALSE, 
@@ -167,12 +158,16 @@ plots = mapply(function(mat, nm) {
     annotation_colors = anncolors,
     silent = TRUE,
     cluster_cols = FALSE,
-    clustering_method = "ward.D2",
+    cluster_rows = FALSE,
+    na_col = "grey",
+    #clustering_method = "ward.D2", #### rm
     main = nm)
-}, act_lst, names(act_lst), SIMPLIFY = FALSE)
+}, act_list_flt, names(act_list_flt), SIMPLIFY = FALSE)
 
+
+# save all plots
 # open png 
-png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/progeny_act_grid_top500_w_spat_dom.png", width = 4500, height = 3000, res = 300) 
+png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/progeny_act_grid_top500_w_spat_dom_pval<0.05.png", width = 4500, height = 3000, res = 300) 
 
 # to save them together: arrange in grid
 grid.arrange(grobs = lapply(plots, function(p) p$gtable), ncol = 3)
@@ -185,7 +180,7 @@ for (idx in (seq_along(plots))) {
   htmp = plots[[idx]]
   
   # open png
-  png(paste0("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/heatmap_acts_s", idx, ".png"), 
+  png(paste0("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/heatmap_acts_s_pval<0.05", idx, ".png"), 
       width = 1500, 
       height = 2000, 
       res = 300)
@@ -235,3 +230,8 @@ Problem with this analysis: we need to plot one more property, which is p value 
 5.  make 2 scripts out of this -\> one for running decoupleR, separate one(s) for plotting
 
 6.  color scheme for spatial domain annotations not consistent!! Amend
+
+```{r}
+# make violin  plots for each sample
+# start out trying with one singular patient
+```
