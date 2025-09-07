@@ -22,6 +22,8 @@ library(ggplot2)
 library(pheatmap)
 library(gridExtra)
 library(funkyheatmap)
+library(rstatix)
+library(ggpubr)
 ```
 
 ## 1. Pathway inference
@@ -234,4 +236,114 @@ Problem with this analysis: we need to plot one more property, which is p value 
 ```{r}
 # make violin  plots for each sample
 # start out trying with one singular patient
+trial = act_list_flt[[1]]
+trial$spatial_domain = as.factor(trial$spatial_domain)
+```
+
+```{r}
+# change dataframe shape to long, to plot all pathways simultaneously
+trial_long = trial %>%
+  pivot_longer(
+    cols = -spatial_domain,             
+    names_to = "pathway",                
+    values_to = "activity"
+  )
+```
+
+```{r}
+# first, check if there are any statisticallt significant differences between pathway activities across spatial domains w kruskal wallis (nonparametric alternative to one-way anova)
+stats = trial_long %>%
+  group_by(pathway) %>%
+  kruskal_test(activity ~ spatial_domain)
+
+# Post-hoc pairwise comparisons
+posthoc_stats = trial_long %>%
+  group_by(pathway) %>%
+  dunn_test(activity ~ spatial_domain, p.adjust.method = "BH") %>%
+  add_xy_position(x = "spatial_domain")
+```
+
+```{r}
+# also want to add count of "non-na" values to each violin plot 
+# "trial"/"trial_long" very sparse, since excluded non-significant spots (where there was non-significant relationship between gene expression pattern and certain pathway activity)
+
+counts = trial_long %>% 
+  group_by(pathway, spatial_domain) %>%
+  summarize(non_na = sum(!is.na(activity)), .groups="drop")
+```
+
+```{r}
+# now plot
+p = ggplot(trial_long, aes(
+  x = spatial_domain, 
+  y = activity, 
+  fill=spatial_domain)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1) +
+  facet_wrap(~ pathway, scales = "free_y", ncol = 1) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(face = "bold")
+  )
+
+ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/pathways.png", width = 5, height = 20, dpi = 300)
+```
+
+```{r}
+p = ggplot(trial_long, aes(x = spatial_domain, y = activity)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.3) +
+  geom_text(data = counts,
+            aes(x = spatial_domain, y = max(trial_long$activity, na.rm = TRUE) + 0.5,
+                label = non_na),
+            inherit.aes = FALSE, size = 3) +
+  facet_wrap(~ pathway, scales = "free_y", ncol = 1) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(face = "bold"))
+
+# Add significance bars
+p + stat_pvalue_manual(
+      posthoc_stats,
+      label = "p.adj.signif",  # shows "ns", "*", "**", "***",
+      xmin = "xmin",
+      xmax = "xmax",
+      tip.length = 0.01,
+      hide.ns = TRUE)
+
+ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/pathways_w_stat_sig.png", width = 5, height = 25, dpi = 300)
+```
+
+### Now do all of that for all samples: 
+
+```{r}
+act_lst_flt_long = act_list_flt %>%
+  map(~ .x %>%
+        mutate(spatial_domain = as.factor(spatial_domain)) %>%
+        pivot_longer(
+          cols = -spatial_domain,
+          names_to = "pathway",
+          values_to = "activity"
+        )
+  )
+```
+
+```{r}
+# use kruskal wallis test to calc whether there is a sign. difference between pathway activation values actoss spatial domains
+stats_all = act_lst_flt_long %>%
+  map(~ .x %>%
+        group_by(pathway) %>%
+        kruskal_test(activity ~ spatial_domain
+                     )
+      )
+
+# do posthoc test (dunn) to identify which exact domains are sign. different 
+posthoc_all = act_lst_flt_long %>% 
+  map(~ .x %>%
+        group_by(pathway) %>%
+        dunn_test(activity ~ spatial_domain, p.adjust.method = "BH") %>%
+        add_xy_position(x = "spatial_domain"
+                        )
+      )
 ```
