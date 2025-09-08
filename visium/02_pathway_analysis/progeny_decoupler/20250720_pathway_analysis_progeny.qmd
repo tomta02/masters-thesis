@@ -141,7 +141,6 @@ anncolors = list(
 
 ```{r}
 ## CONTINUE HERE
-
 # generate all pheatmaps plots into a list
 plots = mapply(function(mat, nm) {
   
@@ -160,37 +159,39 @@ plots = mapply(function(mat, nm) {
     annotation_colors = anncolors,
     silent = TRUE,
     cluster_cols = FALSE,
-    cluster_rows = FALSE,
-    na_col = "grey",
-    #clustering_method = "ward.D2", #### rm
+    #cluster_rows = FALSE, # disable when looking at non filtered results
+    #na_col = "grey", # disable when looking at non filtered results
+    clustering_method = "ward.D2", # disable when cluster_rows = FALSE
     main = nm)
-}, act_list_flt, names(act_list_flt), SIMPLIFY = FALSE)
+}, act_list, names(act_list), SIMPLIFY = FALSE) # act_list for non-filtered results, #act_list_flt = filtered for p< 0.05
 
 
 # save all plots
 # open png 
-png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/progeny_act_grid_top500_w_spat_dom_pval<0.05.png", width = 4500, height = 3000, res = 300) 
+#png('/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/pw_acts_pval_smallerthan0.05_nocluster_prtop500.png', width = 4500, height = 3000, res = 300) 
 
 # to save them together: arrange in grid
-grid.arrange(grobs = lapply(plots, function(p) p$gtable), ncol = 3)
-dev.off()
+#grid.arrange(grobs = lapply(plots, function(p) p$gtable), ncol = 3)
+
+#dev.off()
 ```
 
 ```{r}
-# save individual heatmaps
-for (idx in (seq_along(plots))) {
-  htmp = plots[[idx]]
-  
-  # open png
-  png(paste0("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/heatmap_acts_s_pval<0.05", idx, ".png"), 
-      width = 1500, 
-      height = 2000, 
-      res = 300)
-  
-  print(htmp)
-  
+# make helper function for saving pheatmaps 
+# from: https://davetang.org/muse/2018/05/15/making-a-heatmap-in-r-with-the-pheatmap-package/
+save_pheatmap_png <- function(x, filename, width=1500, height=2000, res=300) {
+  png(filename, width=width, height=height, res=res)
+  grid::grid.newpage()
+  grid::grid.draw(x$gtable)
   dev.off()
 }
+```
+
+```{r}
+for (idx in seq_along(plots)) {
+  save_pheatmap_png(plots[[idx]], paste0("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/heatmap_acts_unfiltered_", idx, ".png"))
+}
+
 ```
 
 ```{r}
@@ -209,7 +210,7 @@ plots_pv = mapply(function(mat, nm) {
 }, pval_list, names(pval_list), SIMPLIFY = FALSE)
 
 # open png 
-png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/progeny_pv_grid_top500.png", width = 4500, height = 3000, res = 300) 
+png("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/progeny_pvals_top500.png", width = 4500, height = 3000, res = 300) 
 
 # to save them together: arrange in grid
 grid.arrange(grobs = lapply(plots_pv, function(p) p$gtable), ncol = 3)
@@ -225,100 +226,9 @@ Problem with this analysis: we need to plot one more property, which is p value 
 
 2.  do morans I analysis to get spatial differential pathway activity -\> extract spot coordinates w Seurat GetTissueCoordinates
 
-3.  TODO violin plots: 1 plot for each sample, 14 subplots for each pathway; each pw has nr. of violins = nr. of spatial domains -\> plot differential pw activity per spatial domain
+3.  make 2 scripts out of this -\> one for running decoupleR, separate one(s) for plotting
 
-4.  code very redundant, simplify!!!
-
-5.  make 2 scripts out of this -\> one for running decoupleR, separate one(s) for plotting
-
-6.  color scheme for spatial domain annotations not consistent!! Amend
-
-```{r}
-# make violin  plots for each sample
-# start out trying with one singular patient
-trial = act_list_flt[[1]]
-trial$spatial_domain = as.factor(trial$spatial_domain)
-```
-
-```{r}
-# change dataframe shape to long, to plot all pathways simultaneously
-trial_long = trial %>%
-  rownames_to_column("barcode") %>%
-  pivot_longer(
-    cols = -c("spatial_domain", "barcode"),           
-    names_to = "pathway",                
-    values_to = "activity"
-  )
-```
-
-```{r}
-# first, check if there are any statisticallt significant differences between pathway activities across spatial domains w kruskal wallis (nonparametric alternative to one-way anova)
-stats = trial_long %>%
-  group_by(pathway) %>%
-  kruskal_test(activity ~ spatial_domain)
-```
-
-```{r}
-# Post-hoc pairwise comparisons
-posthoc_stats = trial_long %>%
-  group_by(pathway) %>%
-  dunn_test(activity ~ spatial_domain, p.adjust.method = "BH") %>%
-  add_xy_position(x = "spatial_domain")
-```
-
-```{r}
-# also want to add count of "non-na" values to each violin plot 
-# "trial"/"trial_long" very sparse, since excluded non-significant spots (where there was non-significant relationship between gene expression pattern and certain pathway activity)
-
-counts = trial_long %>% 
-  group_by(pathway, spatial_domain) %>%
-  summarize(non_na = sum(!is.na(activity)), .groups="drop")
-```
-
-```{r}
-# now plot
-p = ggplot(trial_long, aes(
-  x = spatial_domain, 
-  y = activity, 
-  fill=spatial_domain)) +
-  geom_violin(trim = FALSE) +
-  geom_boxplot(width = 0.1) +
-  facet_wrap(~ pathway, scales = "free_y", ncol = 1) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    strip.text = element_text(face = "bold")
-  )
-
-ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/pathways.png", width = 5, height = 20, dpi = 300)
-```
-
-```{r}
-p = ggplot(trial_long, aes(x = spatial_domain, y = activity)) +
-  geom_violin(trim = FALSE) +
-  geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.3) +
-  geom_text(data = counts,
-            aes(x = spatial_domain, y = max(trial_long$activity, na.rm = TRUE) + 0.5,
-                label = non_na),
-            inherit.aes = FALSE, size = 3) +
-  facet_wrap(~ pathway, scales = "free_y", ncol = 1) +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        strip.text = element_text(face = "bold"))
-
-# Add significance bars
-p + stat_pvalue_manual(
-      posthoc_stats,
-      label = "p.adj.signif", 
-      xmin = "xmin",
-      xmax = "xmax",
-      tip.length = 0.01,
-      hide.ns = TRUE)
-
-ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/pathways_w_stat_sig.png", width = 5, height = 25, dpi = 300)
-```
-
-### Now do all of that for all samples:
+### Make violin plots for all samples
 
 ```{r}
 act_list_flt_long = act_list_flt %>%
@@ -334,28 +244,42 @@ act_list_flt_long = act_list_flt %>%
 ```
 
 ```{r}
-# use kruskal wallis test to calc whether there is a sign. difference between pathway activation values actoss spatial domains
-stats_all = act_list_flt_long %>%
+# use kruskal wallis test to calc whether there is a sign. difference between pathway activation values actoss spatial domains. Omnibus test, maybe delete since we have dunns test
+stats = act_list_flt_long %>%
   map(~ .x %>%
         group_by(pathway) %>%
         kruskal_test(activity ~ spatial_domain)
       )
 
+## check out this error message!!
+
+#Error in `map()`:
+#ℹ In index: 4.
+#ℹ With name: LN0040HD.
+#Caused by error in `mutate()`:
+#ℹ In argument: `data = map(.data$data, .f, ...)`.
+#Caused by error in `map()`:
+#ℹ In index: 1.
+#Caused by error in `kruskal.test.default()`:
+#! all observations are in the same group
 ```
 
 ```{r}
-# do posthoc test (dunn) to identify which exact domains are sign. different 
-posthoc_all = act_list_flt_long %>% 
+# do posthoc test (dunn) to identify which domains are sign. different in their pathway activation value
+posthoc = act_list_flt_long %>% 
   map(~ .x %>%
         group_by(pathway) %>%
         dunn_test(activity ~ spatial_domain, p.adjust.method = "BH") %>%
         add_xy_position(x = "spatial_domain")
       )
+
+## IMPORTANT: CHECK out warning message:Caused by warning in `max()`:
+# ! no non-missing arguments to max; returning -Inf
 ```
 
 ```{r}
 # count non-na values for all patients
-count_all = act_list_flt_long %>%
+nonnacount = act_list_flt_long %>%
   map(~ .x %>% 
         group_by(pathway, spatial_domain) %>%
         summarize(non_na = sum(!is.na(activity)), .groups = "drop")
@@ -363,65 +287,16 @@ count_all = act_list_flt_long %>%
 ```
 
 ```{r}
-# now plot for all patients 
-# now make same plots for pvals:
-# generate all pval plots into a list
-plots_pv = mapply(function(mat, nm) {
-  pheatmap(
-    mat, 
-    color = c("red", "blue"),
-    breaks = c(0, 0.05, 1),
-    legend_breaks = c(0, 0.05, 1),
-    main = nm,
-    show_rownames = FALSE, 
-    silent = TRUE,
-    cluster_cols = FALSE)
-}, pval_list, names(pval_list), SIMPLIFY = FALSE)
-
-# open png 
-png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/progeny_pv_grid_top500.png", width = 4500, height = 3000, res = 300) 
-
-# to save them together: arrange in grid
-grid.arrange(grobs = lapply(plots_pv, function(p) p$gtable), ncol = 3)
-dev.off()
-
-```
-
-```{r}
-p = ggplot(trial_long, aes(x = spatial_domain, y = activity)) +
-  geom_violin(trim = FALSE) +
-  geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.3) +
-  geom_text(data = counts,
-            aes(x = spatial_domain, y = max(trial_long$activity, na.rm = TRUE) + 0.5,
-                label = non_na),
-            inherit.aes = FALSE, size = 3) +
-  facet_wrap(~ pathway, scales = "free_y", ncol = 1) +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        strip.text = element_text(face = "bold"))
-
-# Add significance bars
-p + stat_pvalue_manual(
-      posthoc_stats,
-      label = "p.adj.signif", 
-      xmin = "xmin",
-      xmax = "xmax",
-      tip.length = 0.01,
-      hide.ns = TRUE)
-
-ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/pathways_w_stat_sig.png", width = 5, height = 25, dpi = 300)
-```
-
-```{r}
+# make violin plots for all patient samples 
 plots = map2(
   act_list_flt_long,
-  count_all,
+  nonnacount,
   ~ ggplot(.x, aes(x = spatial_domain, y = activity)) +
     geom_violin(trim = FALSE) +
     geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.3) +
     geom_text(data = .y, 
               aes(x = spatial_domain, 
-                  y = max(.x$activity, na.rm = TRUE) + 0.5, 
+                  y = min(.x$activity, na.rm = TRUE) - 0.5, 
                   label = non_na),
               inherit.aes = FALSE, size = 3) +
     facet_wrap(~ pathway, scales = "free_y", ncol = 1) +
@@ -432,7 +307,7 @@ plots = map2(
 
 plots_with_stats = map2(
   plots,
-  posthoc_all,
+  posthoc,
   ~ .x + stat_pvalue_manual(
     data = .y,
     label = "p.adj.signif", 
@@ -448,6 +323,10 @@ plots_with_stats = map2(
 
 ```{r}
 for (idx in seq_along(plots_with_stats)) {
-  ggsave(paste0("/g/saka/Tatjana/data/data_for_testing_stuff/", idx, ".png"), plots_with_stats[[idx]], width = 5, height = 25, dpi = 300)
+  ggsave(paste0("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/violinplot_", idx, ".png"), plots_with_stats[[idx]], width = 5, height = 25, dpi = 300)
 }
 ```
+
+### Follow up:
+
+quick and dirty: pick 2-3 examples of significantly altered pathways across spatial domains, and look at pw activation - but first, compute same results with PROGENy "top 1000" & also with log-normalized counts instead of SCT counts
