@@ -243,8 +243,9 @@ trial$spatial_domain = as.factor(trial$spatial_domain)
 ```{r}
 # change dataframe shape to long, to plot all pathways simultaneously
 trial_long = trial %>%
+  rownames_to_column("barcode") %>%
   pivot_longer(
-    cols = -spatial_domain,             
+    cols = -c("spatial_domain", "barcode"),           
     names_to = "pathway",                
     values_to = "activity"
   )
@@ -255,7 +256,9 @@ trial_long = trial %>%
 stats = trial_long %>%
   group_by(pathway) %>%
   kruskal_test(activity ~ spatial_domain)
+```
 
+```{r}
 # Post-hoc pairwise comparisons
 posthoc_stats = trial_long %>%
   group_by(pathway) %>%
@@ -306,7 +309,7 @@ p = ggplot(trial_long, aes(x = spatial_domain, y = activity)) +
 # Add significance bars
 p + stat_pvalue_manual(
       posthoc_stats,
-      label = "p.adj.signif",  # shows "ns", "*", "**", "***",
+      label = "p.adj.signif", 
       xmin = "xmin",
       xmax = "xmax",
       tip.length = 0.01,
@@ -315,14 +318,15 @@ p + stat_pvalue_manual(
 ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/pathways_w_stat_sig.png", width = 5, height = 25, dpi = 300)
 ```
 
-### Now do all of that for all samples: 
+### Now do all of that for all samples:
 
 ```{r}
-act_lst_flt_long = act_list_flt %>%
+act_list_flt_long = act_list_flt %>%
   map(~ .x %>%
         mutate(spatial_domain = as.factor(spatial_domain)) %>%
+        rownames_to_column("barcode") %>%
         pivot_longer(
-          cols = -spatial_domain,
+          cols = -c("spatial_domain", "barcode"),
           names_to = "pathway",
           values_to = "activity"
         )
@@ -331,19 +335,119 @@ act_lst_flt_long = act_list_flt %>%
 
 ```{r}
 # use kruskal wallis test to calc whether there is a sign. difference between pathway activation values actoss spatial domains
-stats_all = act_lst_flt_long %>%
+stats_all = act_list_flt_long %>%
   map(~ .x %>%
         group_by(pathway) %>%
-        kruskal_test(activity ~ spatial_domain
-                     )
+        kruskal_test(activity ~ spatial_domain)
       )
 
+```
+
+```{r}
 # do posthoc test (dunn) to identify which exact domains are sign. different 
-posthoc_all = act_lst_flt_long %>% 
+posthoc_all = act_list_flt_long %>% 
   map(~ .x %>%
         group_by(pathway) %>%
         dunn_test(activity ~ spatial_domain, p.adjust.method = "BH") %>%
-        add_xy_position(x = "spatial_domain"
-                        )
+        add_xy_position(x = "spatial_domain")
       )
+```
+
+```{r}
+# count non-na values for all patients
+count_all = act_list_flt_long %>%
+  map(~ .x %>% 
+        group_by(pathway, spatial_domain) %>%
+        summarize(non_na = sum(!is.na(activity)), .groups = "drop")
+      ) 
+```
+
+```{r}
+# now plot for all patients 
+# now make same plots for pvals:
+# generate all pval plots into a list
+plots_pv = mapply(function(mat, nm) {
+  pheatmap(
+    mat, 
+    color = c("red", "blue"),
+    breaks = c(0, 0.05, 1),
+    legend_breaks = c(0, 0.05, 1),
+    main = nm,
+    show_rownames = FALSE, 
+    silent = TRUE,
+    cluster_cols = FALSE)
+}, pval_list, names(pval_list), SIMPLIFY = FALSE)
+
+# open png 
+png("/g/saka/Tatjana/data/data_for_testing_stuff/progeny_top500_genes/run_on_sctransformed_mat/progeny_pv_grid_top500.png", width = 4500, height = 3000, res = 300) 
+
+# to save them together: arrange in grid
+grid.arrange(grobs = lapply(plots_pv, function(p) p$gtable), ncol = 3)
+dev.off()
+
+```
+
+```{r}
+p = ggplot(trial_long, aes(x = spatial_domain, y = activity)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.3) +
+  geom_text(data = counts,
+            aes(x = spatial_domain, y = max(trial_long$activity, na.rm = TRUE) + 0.5,
+                label = non_na),
+            inherit.aes = FALSE, size = 3) +
+  facet_wrap(~ pathway, scales = "free_y", ncol = 1) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        strip.text = element_text(face = "bold"))
+
+# Add significance bars
+p + stat_pvalue_manual(
+      posthoc_stats,
+      label = "p.adj.signif", 
+      xmin = "xmin",
+      xmax = "xmax",
+      tip.length = 0.01,
+      hide.ns = TRUE)
+
+ggsave("/g/saka/Tatjana/data/data_for_testing_stuff/pathways_w_stat_sig.png", width = 5, height = 25, dpi = 300)
+```
+
+```{r}
+plots = map2(
+  act_list_flt_long,
+  count_all,
+  ~ ggplot(.x, aes(x = spatial_domain, y = activity)) +
+    geom_violin(trim = FALSE) +
+    geom_boxplot(width = 0.1, outlier.shape = NA, alpha = 0.3) +
+    geom_text(data = .y, 
+              aes(x = spatial_domain, 
+                  y = max(.x$activity, na.rm = TRUE) + 0.5, 
+                  label = non_na),
+              inherit.aes = FALSE, size = 3) +
+    facet_wrap(~ pathway, scales = "free_y", ncol = 1) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          strip.text = element_text(face = "bold"))
+)
+
+plots_with_stats = map2(
+  plots,
+  posthoc_all,
+  ~ .x + stat_pvalue_manual(
+    data = .y,
+    label = "p.adj.signif", 
+    xmin = "xmin",
+    xmax = "xmax",
+    tip.length = 0.01,
+    hide.ns = TRUE
+  )
+)
+
+
+```
+
+```{r}
+for (idx in seq_along(plots_with_stats)) {
+  ggsave(paste0("/g/saka/Tatjana/data/data_for_testing_stuff/", idx, ".png"), plots_with_stats[[idx]], width = 5, height = 25, dpi = 300)
+}
 ```
