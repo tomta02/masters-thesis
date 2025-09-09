@@ -35,14 +35,43 @@ visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_13_visiu
 
 ```{r}
 # load progeny: pathways, target genes and weights
-pr = get_progeny(organism = 'human', top = 500)
+pr = get_progeny(organism = 'human', top = 10000)
 
 # sum(pr$weight == 0) checking whether beta coefficients of progeny model have been set to 0 for any of the genes (in paper, they only kept coeff of top 100 scoring genes). But is not the case
+```
+
+2025-09-09 amendment: instead of importing the PROGENy "pw x gene" matrix of weights using the standard command, customize matrix by 1. filtering for p-value, 2. sorting for weight
+
+```{r}
+# looking at progeny weights - check how many genes are significant per pw
+pr_sig_split <- pr %>%
+  filter(p_value < 0.05) %>%
+  group_split(source) %>%
+  map(~ arrange(.x, weight))
+
+for (i in (pr_sig_split)) {
+  print(dim(i))
+}
+```
+
+Now that pr dfs are filtered by p-value and sorted by weight: take top 25% and bottom 25%
+
+```{r}
+top25_split <- pr_sig_split %>%
+  map(~ bind_rows(
+    slice_head(.x, prop = 0.25),
+    slice_tail(.x, prop = 0.25)
+  ))
+```
+
+```{r}
+pr_custom =  bind_rows(top25_split)
 ```
 
 ```{r}
 # first, extract sct-transformed count matrices. Maybe run on log norm. count matrices later. Also extract spatial domain annotations
 sct_list = map(visiumlist, ~ as.matrix(.x@assays$SCT$data))
+#lognorm_list = map(visiumlist, ~ as.matrix(.x@assays$Visium$data))
 annot_list = map(visiumlist, ~ as.matrix(.x@meta.data$prelim_growth_2))
 
 ```
@@ -64,13 +93,16 @@ master_annot = map(pat_ids, ~ do.call(rbind, annot_list[grep(.x, names(annot_lis
 # rm visiumlist to not run out of space
 rm(visiumlist)
 gc()
+
+
+#### CONTINUE HERE
 ```
 
 ```{r}
 # run linear model on all patients - infer pathway activities from gene expression information using pw x gene interaction weights stored in PROGENy
 pw_list = lapply(pat_masterlist, function(pat) {
   acts = run_mlm(mat = pat,
-                 net = pr,
+                 net = pr_custom,
                  .source = "source",
                  .target = "target",
                  .mor = "weight",
@@ -168,12 +200,12 @@ plots = mapply(function(mat, nm) {
 
 # save all plots
 # open png 
-#png('/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/pw_acts_pval_smallerthan0.05_nocluster_prtop500.png', width = 4500, height = 3000, res = 300) 
+png('/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/pw_acts_pval_smallerthan0.05_nocluster_custom_pr.png', width = 4500, height = 3000, res = 300) 
 
 # to save them together: arrange in grid
-#grid.arrange(grobs = lapply(plots, function(p) p$gtable), ncol = 3)
+grid.arrange(grobs = lapply(plots, function(p) p$gtable), ncol = 3)
 
-#dev.off()
+dev.off()
 ```
 
 ```{r}
@@ -189,7 +221,7 @@ save_pheatmap_png <- function(x, filename, width=1500, height=2000, res=300) {
 
 ```{r}
 for (idx in seq_along(plots)) {
-  save_pheatmap_png(plots[[idx]], paste0("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/heatmap_acts_unfiltered_", idx, ".png"))
+  save_pheatmap_png(plots[[idx]], paste0("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/heatmap_acts_custom_pr_", idx, ".png"))
 }
 
 ```
@@ -210,7 +242,7 @@ plots_pv = mapply(function(mat, nm) {
 }, pval_list, names(pval_list), SIMPLIFY = FALSE)
 
 # open png 
-png("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/progeny_pvals_top500.png", width = 4500, height = 3000, res = 300) 
+png("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_custom/progeny_pvals_custom.png", width = 4500, height = 3000, res = 300) 
 
 # to save them together: arrange in grid
 grid.arrange(grobs = lapply(plots_pv, function(p) p$gtable), ncol = 3)
@@ -323,7 +355,7 @@ plots_with_stats = map2(
 
 ```{r}
 for (idx in seq_along(plots_with_stats)) {
-  ggsave(paste0("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/violinplot_", idx, ".png"), plots_with_stats[[idx]], width = 5, height = 25, dpi = 300)
+  ggsave(paste0("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_custom/violinplot_cust_", idx, ".png"), plots_with_stats[[idx]], width = 5, height = 25, dpi = 300)
 }
 ```
 
