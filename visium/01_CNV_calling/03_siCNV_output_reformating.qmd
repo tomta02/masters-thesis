@@ -22,59 +22,13 @@ library(qs)
 library(infercnv)
 ```
 
-Now, import the most important output files of inferCNV run:
-
-```{r}
-# output of "per spatial domain"-run infercnv, whole sample: LN0040HD
-cnv_regs_sd = read.table("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV/all_pat_analyzed_per_spat_domain/20250702_LN0040HD_cutoff_0.1_clust_by_grps_T_analysis_mode_sample_HMM_report_by_subcl_denoise_T_HMMtype_i6_threaded32/HMM_CNV_predictions.HMMi6.hmm_mode-samples.Pnorm_0.5.pred_cnv_regions.dat",
-                            sep = "\t",
-                            header = TRUE)
-
-mcmc_sd = readRDS("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV/all_pat_analyzed_per_spat_domain/20250702_LN0040HD_cutoff_0.1_clust_by_grps_T_analysis_mode_sample_HMM_report_by_subcl_denoise_T_HMMtype_i6_threaded32/BayesNetOutput.HMMi6.hmm_mode-samples/MCMC_inferCNV_obj.rds")
-# just want to compare these to "spot-based" infercnv runs
-```
-
 ```{r}
 # loading output of "spot-based" infercnv run, singular ROI: LN0040HD_12BV2R_R1
 # raw results (post MCMC)
 cnv_regs_spots_r = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/jobarray_all_pat_roi_per_spot_BayesMaxPNormal_0.3/LN0040HD_12BV2R_R1/17_HMM_predHMMi6.hmm_mode-cells.pred_cnv_regions.dat", sep = "\t", header = TRUE)
 
-# processed results, post bayesian net
-cnv_regs_spots_p = read.table("/g/saka/Tatjana/analysis/visium/01_CNV_calling/krimskrams/testing_things/HMM_CNV_predictions.HMMi6.hmm_mode-cells.Pnorm_0.3.pred_cnv_regions.dat",
-                         sep = "\t",
-                         header = TRUE)
-
 # read in whole Visium spot-based mcmc infercnv object
 mcmc_spots = readRDS("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/jobarray_all_pat_roi_per_spot_BayesMaxPNormal_0.3/LN0040HD_12BV2R_R1/BayesNetOutput.HMMi6.hmm_mode-cells/MCMC_inferCNV_obj.rds")
-```
-
-```{r}
-# comparing to which extent the "raw" and the "processed" "cnv_regions"file differ
-comp = cnv_regs_spots_p == cnv_regs_spots_r
-
-mismatches = which(!comp, arr.ind = TRUE)
-diff_summary = data.frame(
-  row = mismatches[, 1],
-  col = mismatches[, 2],
-  spots_r = cnv_regs_spots_r[mismatches],
-  spots_p = cnv_regs_spots_p[mismatches]
-)
-
-# they differ only in the column "state": states get corrected from amp/del to 3/"normal" for a fraction of the cnvs
-```
-
-```{r}
-# checking cell probabilities: are they binarized or does infercnv report vals in between 0,1?
-for (i in seq_along(mcmc_spots@cell_probabilities)) {
-  vals = mcmc_spots@cell_probabilities[[i]]
-  # get vals which neither 0 or 1
-  unusual = vals[!vals %in% c(0, 1)]
-
-  if (length(unusual) > 0) {
-    cat("weird values in cellprobs[[", i, "]]:\n", sep="")
-    print(unusual)
-  }
-}
 ```
 
 ```{r}
@@ -102,8 +56,8 @@ cellprobs = map2(
 ```
 
 ```{r}
-# use "cellprobs" list to make df of cnvs - match with raw output file "cnv_regs_spots_r" to get remaining cols (chr, start & stop genomic coords)
-cnvs = data.frame(
+# use "cellprobs" list to make df of cnvs - to later match match with raw output file "cnv_regs_spots_r" to get remaining cols that are necessary for downstream analysis (chr, start & stop genomic coords)
+cnvs_raw = data.frame(
   cnv_name = names(cellprobs),
   bc_name = sapply(cellprobs, function(x) colnames(x)),
   p = sapply(cellprobs, function(x) max(x[, 1])),
@@ -115,12 +69,25 @@ cnvs = data.frame(
 
 ```{r}
 # prototype of final res: extracted info from mcmc object (= post mcmc, post bayes net -> only keep most probable cnvs) & merged with most important cols of raw "cnv_regs_spots_r" output file
-cnvs_m = cnvs %>%
+cnvs_proto = cnvs_raw %>%
   left_join(
     cnv_regs_spots_r %>%
       select(cnv_name, cell_group_name, state, chr, start, end),
     by = c("cnv_name" = "cnv_name", "bc_name" = "cell_group_name")
   )
+```
 
-# save for further trimming based on cnv probabilities; then downstream analysis, plotting etc. 
+```{r}
+# last steps: apply qc filtering thresholds to cnvs called: remove all cnvs with reported state "3" in col "state_mcmc" (="normal", no amp/del), remove all cnvs with probability (col: "p") < 0.7, to keep only high confidence cnvs
+cnvs_fin = cnvs_proto[cnvs_proto$state_mcmc != 3 &
+                      cnvs_proto$p > 0.7, ]
+```
+
+```{r}
+# save final result
+write.table(cnvs_fin, "/g/saka/Tatjana/data/data_for_testing_stuff/prelim_cnv_analysis_spotbased/pat40HD_R1_cnvs_extracted_from_mcmc_infcnvobj.cnv",
+            row.names = FALSE,
+            col.names = TRUE,
+            sep = "\t")
+
 ```
