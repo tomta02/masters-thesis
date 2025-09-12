@@ -22,239 +22,105 @@ library(qs)
 library(infercnv)
 ```
 
-Now, import the most important output files of inferCNV run one-by-one:
+Now, import the most important output files of inferCNV run:
 
 ```{r}
-# overview on which CNVs were found (which chromosome, state, genomic coordinates, ..)
-sicnv_regions = read.table("01_CNV_analysis/03_siCNV_LN0438/20250423_cutoff_0.1_cluster_by_groups_TRUE_analysis_mode_samples_HMM_report_by_subcluster_denoise_TRUE/HMM_CNV_predictions.HMMi6.hmm_mode-samples.Pnorm_0.5.pred_cnv_regions.dat",
+# output of "per spatial domain"-run infercnv, whole sample: LN0040HD
+cnv_regs_sd = read.table("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV/all_pat_analyzed_per_spat_domain/20250702_LN0040HD_cutoff_0.1_clust_by_grps_T_analysis_mode_sample_HMM_report_by_subcl_denoise_T_HMMtype_i6_threaded32/HMM_CNV_predictions.HMMi6.hmm_mode-samples.Pnorm_0.5.pred_cnv_regions.dat",
                             sep = "\t",
                             header = TRUE)
+
+mcmc_sd = readRDS("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV/all_pat_analyzed_per_spat_domain/20250702_LN0040HD_cutoff_0.1_clust_by_grps_T_analysis_mode_sample_HMM_report_by_subcl_denoise_T_HMMtype_i6_threaded32/BayesNetOutput.HMMi6.hmm_mode-samples/MCMC_inferCNV_obj.rds")
+# just want to compare these to "spot-based" infercnv runs
 ```
 
 ```{r}
-#infcnvobj = readRDS("01_CNV_analysis/03_siCNV_LN0438/20250423_cutoff_0.1_cluster_by_groups_TRUE_analysis_mode_samples_HMM_report_by_subcluster_denoise_TRUE/run.final.infercnv_obj")
+# loading output of "spot-based" infercnv run, singular ROI: LN0040HD_12BV2R_R1
+# raw results (post MCMC)
+cnv_regs_spots_r = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/jobarray_all_pat_roi_per_spot_BayesMaxPNormal_0.3/LN0040HD_12BV2R_R1/17_HMM_predHMMi6.hmm_mode-cells.pred_cnv_regions.dat", sep = "\t", header = TRUE)
+
+# processed results, post bayesian net
+cnv_regs_spots_p = read.table("/g/saka/Tatjana/analysis/visium/01_CNV_calling/krimskrams/testing_things/HMM_CNV_predictions.HMMi6.hmm_mode-cells.Pnorm_0.3.pred_cnv_regions.dat",
+                         sep = "\t",
+                         header = TRUE)
+
+# read in whole Visium spot-based mcmc infercnv object
+mcmc_spots = readRDS("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/jobarray_all_pat_roi_per_spot_BayesMaxPNormal_0.3/LN0040HD_12BV2R_R1/BayesNetOutput.HMMi6.hmm_mode-cells/MCMC_inferCNV_obj.rds")
 ```
 
 ```{r}
-# very big seurat object, contains information on cnv probabilities per barcode in "mcmc@cell_probabilities"
-mcmc = readRDS("01_CNV_analysis/03_siCNV_LN0438/20250423_cutoff_0.1_cluster_by_groups_TRUE_analysis_mode_samples_HMM_report_by_subcluster_denoise_TRUE/BayesNetOutput.HMMi6.hmm_mode-samples/MCMC_inferCNV_obj.rds")
-```
+# comparing to which extent the "raw" and the "processed" "cnv_regions"file differ
+comp = cnv_regs_spots_p == cnv_regs_spots_r
 
-### Step 1: assign names to mcmc\@cell_probabilities
+mismatches = which(!comp, arr.ind = TRUE)
+diff_summary = data.frame(
+  row = mismatches[, 1],
+  col = mismatches[, 2],
+  spots_r = cnv_regs_spots_r[mismatches],
+  spots_p = cnv_regs_spots_p[mismatches]
+)
 
-The information we need for the CNV analysis: saved in "mcmc\@cell_probabilities" (list of len = 56, one element for each CNV that was found)
-
-Looking at an individual element of "mcmc\@cell_probabilities": has 6 rows, one for each CNV state, & a number n of columns, corresponding to the number of visium spots in which that CNV was detected. In our case, all of the 56 CNVs were found in either of 4 "prelim_anno" spatial domains (cFL_follicular, cFL_diffuse, FLBL, interfollicular), as the CNV analysis was conducted on a "per disease-domain" basis.\
-(NOTE: will be done on a per-spot basis, but jobs ran out of mem, so will use this one for now).\
-
-```{r}
-# investigating output
-#1
-str(mcmc@cell_probabilities)
-
-#2
-mcmc@cell_probabilities[[1]][1:6, 1:10]
-```
-
-First, give name to each entry in mcmc\@cell_probabilities (names of our CNVs):
-
-```{r}
-mcmc@cell_probabilities = mcmc@cell_probabilities %>%
-  set_names(as.character(mcmc@cnv_regions))
-
-# now we can e.g. "names(mcmc@cell_probabilities[4])"
-```
-
-As a next step, replace "colnames(mcmc\@cell_probabilities\[\[x\]\])" with actual visium spot ID.
-
-PROBLEM: colnames are called "epsilon\[1\]", "epsilon\[2\]", ... up to \[1359\]. 1359 -\> nr. corresponds to the nr. of Visium barcodes belonging to spatial domain "cFL_diffuse". But: how do we "translate" the "epsilon\[x\]" to the Visium spot ID?\
-There are two possible cases:
-
-1.) we have "mcmc\@cell_genes" (list of len 56; 1 entry per CNV), and gives us the information which "cells" (i.e. which visium spot) indices harbour a given CNV. E.g. doing:
-
-```         
-mcmc@cell_gene[[1]]$Cells
-```
-
-gives us a list of length 1359 of integer numbers, which act as indices for accessing our Visium spot barcodes. Example:
-
-```         
-> mcmc@cell_gene[[1]]$Cells[1:10]
- [1] 8125 8129 8130 8133 8135 8136 8138 8141 8142 8143
-```
-
-\
-However, when running inferCNV, the visium spots are also *clustered*: clustering information found in "mcmc\@tumor_subclusters\$subclusters\$cFL_diffuse\$cFL_diffuse_s1" (we have a singular "subcluster" for each spatial domain).\
-Also gives us the information which spot index belongs to which barcode:
-
-```         
-> mcmc@tumor_subclusters$subclusters$cFL_diffuse$cFL_diffuse_s1[1:9]
-LN0438_MAAFHY3_R2_ACCCAACGCCCGTGGC-1 LN0438_MAAFHY3_R2_GAAAGAACAGCGTTAT-1 LN0438_MAAFHY3_R2_AAATTCCAGGTCCAAA-1 
-                                8328                                 9395                                 8164 
-LN0438_MAAFHY3_R2_GAACGCGGGTCACACG-1 LN0438_MAAFHY3_R2_GGCTCGCGTTGAGGTA-1 LN0438_MAAFHY3_R2_GTGGTGGCCAAGTGAA-1 
-                                9407                                 9753                                 9940 
-LN0438_MAAFHY3_R2_TGGACCAATCTAAGAT-1 LN0438_MAAFHY3_R2_AAGTTCACTCCAAGCT-1 LN0438_MAAFHY3_R2_CCTGTCCCTCACGTTA-1 
-                               10410                                 8238                                 9066 
-```
-
-THE ISSUE: the order of barcodes here (clustering) is different compared to the order in "mcmc\@cell_gene":\
-
-```         
-> mcmc@cell_gene[[1]]$Cells[1:10]
- [1] 8125 8129 8130 8133 8135 8136 8138 8141 8142 8143
-```
-
-vs:
-
-```         
-str(mcmc@tumor_subclusters$subclusters$cFL_diffuse$cFL_diffuse_s1[1:10])
- Named int [1:10] 8328 9395 8164 9407 9753 9940 10410 8238 9066 9511
- - attr(*, "names")= chr [1:10] "LN0438_MAAFHY3_R2_ACCCAACGCCCGTGGC-1" "LN0438_MAAFHY3_R2_GAAAGAACAGCGTTAT-1" "LN0438_MAAFHY3_R2_AAATTCCAGGTCCAAA-1" "LN0438_MAAFHY3_R2_GAACGCGGGTCACACG-1"
-```
-
-**Which order is the correct one?**\
-since mcmc\@cell_gene and mcmc\@cell_probabilities have exactly same structure: assuming the reported order of the Visium spot IDs is the same for them. Will use indices in mcmc\@cell_gene to replace the current "epsilon\[x\]" colnames, and use the info in mcmc\@tumor_subclusters(\$)subclusters(\$)cFL_diffuse to "translate" the indices into a Visium spot ID.
-
-```         
-mcmc@cell_probabilities[[1]] 
-```
-
-\
-Some further info:
-
-the CNVs of mcmc\@cell_probabilities\[\[1\]\] - mcmc\@cell_probabilities\[\[16\]\] all belong to the "cFL_diffuse" spatial domain. We know this because when we do:
-
-```         
-str(mcmc@tumor_subclusters$subclusters$cFL_diffuse)
-```
-
-we see that the nr. of barcodes in the "cFL_diffuse" spatial domain is 1359, which is exactly the same nr. of visium spots we get when we do "str(mcmc\@cell_probabilities\[\[x\]\])", where x is a nr. between 1 & 16.\
-This means: the first 16 CNVs called belong to the "cFL_diffuse" spatial domain, the next few CNVs belong to the "cFL_follicular" spatial domain (CNVs found in 5204 barcodes), which is exactly the same nr. we get when we do "str(mcmc\@tumor_subclusters$subclusters$cFL_follicular)".
-
-```         
-str(mcmc@cell_probabilities[[1]])
-```
-
-We also see that the order of spot indices is the same in mcmc\@cell_gene\[\[1\]\]\$Cells up until mcmc\@cell_gene\[\[16\]\]\$Cells:
-
-```{r}
-all(mcmc@cell_gene[[1]]$Cells == mcmc@cell_gene[[16]]$Cells)
+# they differ only in the column "state": states get corrected from amp/del to 3/"normal" for a fraction of the cnvs
 ```
 
 ```{r}
-all(sapply(2:16, function(i) all(mcmc@cell_gene[[i]]$Cells == mcmc@cell_gene[[1]]$Cells)))
-```
+# checking cell probabilities: are they binarized or does infercnv report vals in between 0,1?
+for (i in seq_along(mcmc_spots@cell_probabilities)) {
+  vals = mcmc_spots@cell_probabilities[[i]]
+  # get vals which neither 0 or 1
+  unusual = vals[!vals %in% c(0, 1)]
 
-\
-Therefore: replace the "epsilon\[x\]" column names by the spot indices:
-
-```{r}
-for (i in seq_along(mcmc@cell_probabilities)) {
-  spot_indices = mcmc@cell_gene[[i]]$Cells
-  cnv_prob_mat = mcmc@cell_probabilities[[i]]
-  
-  if (ncol(cnv_prob_mat) == length(spot_indices)) {
-    colnames(cnv_prob_mat) = spot_indices
-    mcmc@cell_probabilities[[i]] = cnv_prob_mat  
-  } else {
-    warning(sprintf("Dimension mismatch at index %d: %d columns vs %d cells", 
-                    i, ncol(cnv_prob_mat), length(spot_indices)))
+  if (length(unusual) > 0) {
+    cat("weird values in cellprobs[[", i, "]]:\n", sep="")
+    print(unusual)
   }
 }
 ```
 
-\
-Next step: need to "translate" the integer value of the new "colnames(mcmc\@cell_probabilities\[\[x\]\])" into the actual Visium spot barcode. All of this information is saved in the "mcmc\@tumor_subclusters", but in a highly nested way:\
-extract all of the necessary infos from the "mcmc\@tumor_subclusters" and make it 1 big DF, use this to retrieve actual Visium barcode names
+```{r}
+# start of data reformating: "cell_probabilities" slot in mcmc object.
+cellprobs = mcmc_spots@cell_probabilities
+# get their names from cnv_regions slot
+names(cellprobs) = as.character(mcmc_spots@cnv_regions)
+
+# cellprobs not state the barcode where each cnv appears - get bc information from count.data, and match it to cnvs in second step using the integer barcode indices in "cell_gene" slot of mcmc object
+bc = colnames(mcmc_spots@count.data)
+```
 
 ```{r}
-# make list with all of the information we need, for all of our spatial domains
-subclusters = list(
-  cFL_diffuse = mcmc@tumor_subclusters$subclusters$cFL_diffuse$cFL_diffuse_s1,
-  cFL_follicular = mcmc@tumor_subclusters$subclusters$cFL_follicular$cFL_follicular_s1,
-  FLBL = mcmc@tumor_subclusters$subclusters$FLBL$FLBL_s1,
-  interfollicular = mcmc@tumor_subclusters$subclusters$interfollicular$interfollicular_s1
+# obtain barcode names by matching bc indices to bc names
+cellprobs = map2(
+  cellprobs,
+  mcmc_spots@cell_gene,
+  ~ {
+    # integer barcode indices from cell_gene, look for bc names in "bc"
+    barcode_idx = as.integer(.y$Cells)
+    colnames(.x) - bc[barcode_idx]
+    .x
+  }
 )
 ```
 
-next, convert each of the 4 named integer vectors that make up elements of "subclusters" list into a dataframe
+```{r}
+# use "cellprobs" list to make df of cnvs - match with raw output file "cnv_regs_spots_r" to get remaining cols (chr, start & stop genomic coords)
+cnvs = data.frame(
+  cnv_name = names(cellprobs),
+  bc_name = sapply(cellprobs, function(x) colnames(x)),
+  p = sapply(cellprobs, function(x) max(x[, 1])),
+  state_mcmc = sapply(cellprobs, function(x) rownames(x)[which.max(x[, 1])]),
+  stringsAsFactors = FALSE
+)
+
+```
 
 ```{r}
-dfs = lapply(names(subclusters), function(name) {
-  vec = subclusters[[name]]
-  data.frame(
-    spotindex = as.integer(vec),
-    barcode = names(vec),
-    subcluster = name,
-    stringsAsFactors = FALSE
+# prototype of final res: extracted info from mcmc object (= post mcmc, post bayes net -> only keep most probable cnvs) & merged with most important cols of raw "cnv_regs_spots_r" output file
+cnvs_m = cnvs %>%
+  left_join(
+    cnv_regs_spots_r %>%
+      select(cnv_name, cell_group_name, state, chr, start, end),
+    by = c("cnv_name" = "cnv_name", "bc_name" = "cell_group_name")
   )
-})
-```
 
-last step: rowbind all of the dataframes, and sort them in ascending order. Now we have neat overview table on all barcodes & their corresponding index
-
-```{r}
-overview_table = do.call(rbind, dfs)
-overview_table = overview_table %>% arrange(spotindex)
-```
-
-Finally, replace the "colnames(mcmc\@cell_probabilities\[\[1\]\])" by the values in overview_table\$barcodes, by matching them to the Visium spot indices given in "overview_table\$spotindex".
-
-```{r}
-for (i in seq_along(mcmc@cell_probabilities)) {
-  cnv_prob_mat = mcmc@cell_probabilities[[i]]
-  coln = as.numeric(colnames(cnv_prob_mat))
-  #print(coln)
-  
-  if (all(coln %in% overview_table$spotindex)) {
-    new_colnames = overview_table$barcode[match(coln, overview_table$spotindex)]
-    colnames(cnv_prob_mat) <- new_colnames
-    mcmc@cell_probabilities[[i]] <- cnv_prob_mat
-    
-  }
-}
-```
-
-Transpose the elements in mcmc\@cell_probabilities such that the barcodes are the rows and the 6 different CNV states are the columns
-
-```{r}
-for (i in seq_along(mcmc@cell_probabilities)) {
-  cnv_prob_mat = mcmc@cell_probabilities[[i]]
-  
-  cnv_prob_mat_t = t(cnv_prob_mat)
-  mcmc@cell_probabilities[[i]] = cnv_prob_mat_t
-}
-```
-
-Now, using the information in "sicnv_regions", subset the CNV probability matrices of "mcmc\@cell_probabilities" by the CNV state that was detected for a given CNV (only 1 state can be relevant for a given CNV), and save results to new list "results"
-
-```{r}
-# get the cnv names and cnv states; create list of matrices w. 2 columns: "probability" and "state"
-cnv_names = sicnv_regions$cnv_name
-cnv_states = sicnv_regions$state  
-
-result = Map(function(name, state) {
-  probs = mcmc@cell_probabilities[[name]][, state]
-  n = length(probs)
-  cbind(probability = probs, state = rep(state, n))
-}, name = cnv_names, state = cnv_states)
-
-# Name the list
-names(result) = cnv_names
-
-```
-
-## 
-
-### Final output: for each CNV, we have the barcodes where it occurs, the probability, and the CNV state. Each CNV is own element in "results" list.
-
-**Note:** we know that for each spatial domain, the CNVs were called individually - that means if e.g. 3 different spatial domains ("cFL_follicular", "cFL_diffuse" and "FLBL") have the same CNV on e.g. chromosome 1, it is going to show up as three different CNVs in the "results" list. We know this because when we apply GenomicRanges::reduce, the list of CNVs reduces by a lot\
-Will think about how to best apply that here: just summarize the CNVs that were effectively called multiple times by concatenating all the lists belonging to the same CNV? Probably most straightforward, think about
-
-Now: plot each CNV on the Visium tissue slides, and see which CNVs were detected in which tissue areas.\
-NOTE: this is going to be more interesting when we plot CNVs that were called on a "per-spot" level, not "spatial domain level".
-
-```{r}
-# save "result" list
-qsave(result, "/g/saka/Tatjana/visium/analysis_1/01_CNV_analysis/03_siCNV_LN0438/20250423_cutoff_0.1_cluster_by_groups_TRUE_analysis_mode_samples_HMM_report_by_subcluster_denoise_TRUE/analysis/cnv_probabilities/cnv_probabilities.rds")
+# save for further trimming based on cnv probabilities; then downstream analysis, plotting etc. 
 ```
