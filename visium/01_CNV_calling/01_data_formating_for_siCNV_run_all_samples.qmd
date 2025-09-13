@@ -27,18 +27,22 @@ library(Matrix)
 First, load list of Visium objects (after QC)
 
 ```{r}
-visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_10_visium_flt.qs", nthreads = 32)
+# OLD:
+#visiumlist_old = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_10_visium_flt.qs", nthreads = 32)
+# NEW:
+
+visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_13_visium_flt.qs", nthreads = 32)
 ```
 
 Next, import healthy lymph node count matrix & annotation file.
 
 ```{r}
-healthy_ln_mtx <- qread(
-  "/g/saka/Tatjana/visium/V1_healthy_human_lymph_node/healthy_ln_sc2_QC_HGNCgenenames.qs",
+healthy_ln_mtx = qread(
+  "/g/saka/Tatjana/data/V1_healthy_human_lymph_node/healthy_ln_sc2_QC_HGNCgenenames.qs",
   nthreads = 32
   )
 
-healthy_annot = read.csv('/g/saka/Tatjana/visium/V1_healthy_human_lymph_node/gc_annot_final.csv')
+healthy_annot = read.csv('/g/saka/Tatjana/data/V1_healthy_human_lymph_node/gc_annot_final.csv')
 ```
 
 ```{r}
@@ -66,14 +70,14 @@ Create annotation files (df w. 2 columns: barcodes, spatial domain annotation) f
 
 ```{r}
 # write func to generate histological annotations 
-create_siCNV_annot <- function(seu) {
+create_siCNV_annot = function(seu) {
   # retrieve barcodes & "alias" vector from seurat obj meta.data
-  Barcode <- colnames(seu)
-  Histology <- as.character(seu@meta.data$prelim_anno)
+  Barcode = colnames(seu)
+  Histology = as.character(seu@meta.data$prelim_growth_2)
   
   # join them
-  result_matrix <- cbind(Barcode, Histology)
-  result_df <- as.data.frame(result_matrix)
+  result_matrix = cbind(Barcode, Histology)
+  result_df = as.data.frame(result_matrix)
   
   return(result_df)
 }
@@ -111,7 +115,7 @@ joint_count_mtx = function(list_of_seu, healthy_seu) {
     layer = "counts"
     )
   
-  patientcountmtx_list <- lapply(
+  patientcountmtx_list = lapply(
     list_of_seu, 
     function(seu) {GetAssayData(
       object = seu, 
@@ -123,33 +127,33 @@ joint_count_mtx = function(list_of_seu, healthy_seu) {
   # "healthy_count_mtx"
   
   # first, get the genes (i.e. rownames) from all data frames in patientcounts_list
-  rownames_list <- lapply(patientcountmtx_list, rownames)
+  rownames_list = lapply(patientcountmtx_list, rownames)
 
   # next, add rownames from the healthy_count_mtx to rownames_list
-  rownames_list <- c(rownames_list, list(rownames(healthy_count_mtx)))
+  rownames_list = c(rownames_list, list(rownames(healthy_count_mtx)))
 
   # use Reduce to intersect all rownames in rownames_list, to only keep the ones that
   # are present in all
-  common_genes <- Reduce(intersect, rownames_list)
+  common_genes = Reduce(intersect, rownames_list)
 
   # filter each data frame in patientcountmtx_list to keep only the common genes
-  patientcountmtx_list_filtered <- lapply(
+  patientcountmtx_list_filtered = lapply(
     patientcountmtx_list, 
     function(df) df[common_genes, , drop= FALSE])
   
   # filter healthy_count_mtx to keep only the common genes
-  healthy_count_mtx_filtered <- healthy_count_mtx[common_genes, , drop = FALSE]
+  healthy_count_mtx_filtered = healthy_count_mtx[common_genes, , drop = FALSE]
   #str(healthy_count_mtx_filtered)
   
   # convert all of the matrices to dfs
-  patientcountmtx_list_filtered <- lapply(
+  patientcountmtx_list_filtered = lapply(
     patientcountmtx_list_filtered, 
     function(i) {as.data.frame(i)})
   
-  healthy_count_df_filtered <- as.data.frame(healthy_count_mtx_filtered)
+  healthy_count_df_filtered = as.data.frame(healthy_count_mtx_filtered)
   
   # LASTLY: cbind all of the data.frames (i.e. along "Barcode" axis) to have one big df
-  final_count_mtx <- bind_cols(patientcountmtx_list_filtered, healthy_count_df_filtered )
+  final_count_mtx = bind_cols(patientcountmtx_list_filtered, healthy_count_df_filtered )
 
 }
 ```
@@ -157,11 +161,11 @@ joint_count_mtx = function(list_of_seu, healthy_seu) {
 Now applying this function to all our patient samples in "master_list":
 
 ```{r}
-joint_mtx_list <- list()
+joint_mtx_list = list()
 
 for (id in names(master_list)) {
-  sublist <- master_list[[id]]
-  joint_mtx_list[[id]] <- joint_count_mtx(sublist, healthy_ln_mtx)
+  sublist = master_list[[id]]
+  joint_mtx_list[[id]] = joint_count_mtx(sublist, healthy_ln_mtx)
 }
 
 ```
@@ -172,7 +176,7 @@ Each of our annotation files saved in the list "annot_list" needs to be joined w
 
 ```{r}
 # join "p11" and "healthy" annotations
-#joined_annot <- rbind(healthy_annot, sample_annotations)
+#joined_annot = rbind(healthy_annot, sample_annotations)
 ```
 
 ```{r}
@@ -180,16 +184,12 @@ joined_annot_list = list()
 
 for (id in names(annot_list)) {
   subannot = annot_list[[id]]
+  #print(subannot)
   joined_annot_list[[id]] = rbind(healthy_annot, subannot)
 }
 ```
 
 Next, subset our count matrices by the barcodes that are in the joined annotation files:
-
-```{r}
-tcntmt = joint_mtx_list[[1]]
-tannot = joined_annot_list[[1]]
-```
 
 ```{r}
 final_subs_cntmtx_list = list()
@@ -209,7 +209,7 @@ Now, save each matrix and each annot file individually:
 ```{r}
 for (id in names(final_subs_cntmtx_list)) {
   mtx = final_subs_cntmtx_list[[id]]
-  fname <- paste0("01_CNV_analysis/all_pat_countmat_and_annot/", id, "_countmtx.tsv")
+  fname = paste0("/g/saka/Tatjana/data/01_CNV_analysis/patient_data_formated_for_running_infercnv/all_pat_countmat_and_annot_new_spatial_domains/", id, "_countmtx.tsv")
   write.table(mtx, 
               fname,
               sep = "\t", 
@@ -220,7 +220,7 @@ for (id in names(final_subs_cntmtx_list)) {
 ```{r}
 for (id in names(joined_annot_list)) {
   mtx = joined_annot_list[[id]]
-  fname <- paste0("01_CNV_analysis/all_pat_countmat_and_annot/", id, "_annot.tsv")
+  fname = paste0("/g/saka/Tatjana/data/01_CNV_analysis/patient_data_formated_for_running_infercnv/all_pat_countmat_and_annot_new_spatial_domains/", id, "_annot.tsv")
   write.table(mtx, 
               fname,
               sep = "\t",
