@@ -1,0 +1,173 @@
+---
+title: "20250702_numbat_siCNV_matching_output_plots"
+author: "Tatjana Tomek"
+format: html
+editor: visual
+---
+
+## Numbat & inferCNV results matching - output and plots
+
+for interactive plotting
+
+```{r}
+# load libraries
+library(qs)
+library(Seurat)
+library(SeuratObject)
+library(tidyverse)
+library(GenomicRanges)
+library(VennDiagram)
+library(gtrellis)
+library(circlize)
+```
+
+```{r}
+# load output files
+shared = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2/LN0025/infercnv_numbat_matching.csv")
+shared = shared[,-c(1)]
+shared$chr = paste0("chr", shared$chr)
+shared = shared[shared$nr_match != 0, ]
+shared = na.omit(shared) # remove NA vals ... fix this in preprocessing script
+```
+
+```{r}
+numbat = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2/LN0025/numbat_results.csv")
+# gtrellis expects the integer nr. of the chromosome to be preceded by "chr"
+numbat$CHROM = paste0("chr", numbat$CHROM)
+```
+
+```{r}
+sicnv = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2/LN0025/infercnv_results.csv")
+sicnv$chr = paste0("chr", sicnv$chr)
+```
+
+Splitting infercnv-based cnv calls into it's original spatial domains, so we can add a different track for each spatial dom:
+
+```{r}
+sicnv_split = sicnv %>%
+  separate_rows(cell_group_name, sep = ",") %>%
+  group_split(cell_group_name, .keep = TRUE)
+
+names(sicnv_split) = c("diffuse_fdc", "interfollicular_malig", "other")
+```
+
+```{r}
+# elemeents of sicnv_split are tibbles, convert to df to join
+sicnv_split = lapply(sicnv_split, as.data.frame)
+
+# append other dfs to make "master_list"
+master_list = c(
+  sicnv_split,
+  list(sicnv, numbat, shared)
+)
+
+names(master_list) = c("diffuse_fdc", "interfollicular_malig", "other", "inferCNV_combined", "numbat", "shared")
+```
+
+Converting our data to genomic ranges objects, so we can make plots with gtrellis
+
+```{r}
+make_granges = function(df, chr_col, start_col, end_col, state_col) {
+  GRanges(
+    seqnames = df[[chr_col]],
+    ranges = IRanges(start = df[[start_col]], end = df[[end_col]]),
+    cnv_state = df[[state_col]]
+  )
+}
+```
+
+```{r}
+gr_infcnv = make_granges(sicnv, "chr", "start", "end", "cnv_state_clean")
+gr_numbat = make_granges(numbat, "CHROM", "seg_start", "seg_end", "cnv_state_post")
+gr_shared = make_granges(shared, "chr", "start_match", "end_match", "state")
+
+sicnv_sd = list()
+for (i in seq_along(sicnv_split)) {
+  gr_i = make_granges(sicnv_split[[i]], "chr", "start", "end", "cnv_state_clean")
+  sicnv_sd[[i]] = gr_i
+}
+```
+
+Next, make trellis graph of CNVs in numbat, CNVs in siCNV and their overlaps
+
+```{r}
+pdf("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2/LN0025/gtrellis_plot_LN0025.pdf", width = 20, height = 5)
+
+# for some reason, this does not work
+col_fun = c("amp" = "red", "del" = "blue")
+
+
+gtrellis_layout(
+  category = c("chr1", "chr2", "chr3", "chr4", "chr5", "chr6", "chr7", "chr8", "chr9", "chr10", "chr11", "chr12", "chr13", "chr14", "chr15", "chr16", "chr17", "chr18", "chr19", "chr20", "chr21", "chr11"),
+  species = "hg38",
+  add_name_track = TRUE,
+  add_ideogram_track = TRUE,
+  n_track = 6, 
+  equal_width = FALSE,
+  title = "CNVs inferred using inferCNV, numbat, and overlapping CNVs - LN0025", 
+  track_ylab = c("shared", "numbat", "inferCNV_all", "diffuse_fdc", "interfollicular_malig", "other"), 
+  track_axis = FALSE,
+  xlab = "")
+
+add_rect_track(
+  gr_shared,
+  track = 2,
+  h1 = 1, 
+  h2 = 0,
+  gp = gpar(col = NA, fill = col_fun[mcols(gr_shared)$cnv_state])
+  )
+
+add_rect_track(
+  gr_numbat,
+  track = 3,
+  h1 = 1, 
+  h2 = 0,
+  gp = gpar(col = NA, fill = col_fun[mcols(gr_numbat)$cnv_state])
+  )
+
+add_rect_track(
+  gr_infcnv,
+  track = 4,
+  h1 = 1, 
+  h2 = 0,
+  gp = gpar(col = NA, fill = col_fun[mcols(gr_infcnv)$cnv_state])
+  )
+
+add_rect_track(
+  sicnv_sd[[1]],
+  track = 5,
+  h1 = 1, 
+  h2 = 0,
+  gp = gpar(col = NA, fill = col_fun[mcols(sicnv_sd[[1]])$cnv_state])
+  )
+
+add_rect_track(
+  sicnv_sd[[2]],
+  track = 6,
+  h1 = 1, 
+  h2 = 0,
+  gp = gpar(col = NA, fill = col_fun[mcols(sicnv_sd[[2]])$cnv_state])
+  )
+
+add_rect_track(
+  sicnv_sd[[3]],
+  track = 7,
+  h1 = 1, 
+  h2 = 0,
+  gp = gpar(col = NA, fill = col_fun[mcols(sicnv_sd[[3]])$cnv_state])
+  )
+
+#add_rect_track(
+  #sicnv_sd[[4]],
+  #track = 8,
+  #h1 = 1, 
+  #h2 = 0,
+  #gp = gpar(col = NA, fill = col_fun[mcols(sicnv_sd[[4]])$cnv_state])
+  #)
+
+
+dev.off()
+
+#gtrellis_show_index()
+
+```
