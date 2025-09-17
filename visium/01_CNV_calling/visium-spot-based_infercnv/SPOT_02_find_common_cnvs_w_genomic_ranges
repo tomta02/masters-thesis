@@ -19,14 +19,14 @@ library(tidyverse)
 
 ```{r}
 # test sample of 1 patient
-test = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/LN0040HD/LN0040HD_12BV2R_R1/HMM_CNV_predictions.HMMi6.hmm_mode-cells.Pnorm_0.5.pred_cnv_regions.dat", header = TRUE)
+test = read.table("/g/saka/Tatjana/data/data_for_testing_stuff/prelim_cnv_analysis_spotbased/pat40HD_R1_cnvs_extracted_from_mcmc_infcnvobj.cnv", header = TRUE)
 ```
 
 ```{r}
 test$width = test$end - test$start
 test$width_kb = (test$width)/1000
 
-test_subset_to_keep = grep(paste0("^", "LN0040HD", "_"), test$cell_group_name)
+test_subset_to_keep = grep(paste0("^", "LN0040HD", "_"), test$bc_name)
 test_flt = test[test_subset_to_keep, , drop=FALSE]
 ```
 
@@ -36,8 +36,8 @@ gr = GRanges(seqnames = test_flt$chr,
                start = test_flt$start,
                end = test_flt$end,
                names = test_flt$cnv_name),
-              barcode = test_flt$cell_group_name,
-              state = test_flt$state,
+              barcode = test_flt$bc_name,
+              state = test_flt$state_mcmc,
               cnv_name = test_flt$cnv_name
              )
 ```
@@ -79,8 +79,6 @@ ol = countOverlaps(dj, gr)
 mcols(dj)$count = ol
 ```
 
-#### Next, make some plots
-
 ```{r}
 # make df of the data we want to plot
 df = data.frame(
@@ -118,36 +116,6 @@ ggplot(data = df,
 #### Clean up disjoined genomic ranges
 
 \- remove chunks that appear with very low frequency (most likely noise) - across all chromosomes
-
-```{r}
-# # try out: remove 20% of sequence bins with the lowest count frequency for each chromosome
-# rmv_lowest_20pct = function(g_ranges) {
-#   
-#   ## split granges per chrom
-#   g_ranges_splt = split(g_ranges, g_ranges@seqnames)
-#   
-#   for (i in seq_along(g_ranges_splt)) {
-#     
-#     # for each chr: get the nr of rows that is equal to 10 %
-#     chr_gr = g_ranges_splt[[i]]
-#     rownr_20pct = floor((length(chr_gr)) * 0.2)
-#     # print(rownr_10pct)
-#     
-#     # now, sort dfs by their bin count frequencies (lowest to highest) - so we can rmv bins with lowest count frequency
-#     chr_gr = chr_gr[order(chr_gr$count), ]
-#     
-#     # now, of the sorted dataframes, remove the first 10% of sequences (i.e. the sequences with the lowest nr of counts)
-#     if (rownr_20pct > 0) {
-#       chr_gr = chr_gr[-seq_len(rownr_20pct), ]
-#     }
-#     
-#     g_ranges_splt[[i]] = chr_gr
-#   }
-#     
-#   gr_clean = unlist(g_ranges_splt, use.names = FALSE)
-#   return(gr_clean)
-# }
-```
 
 ```{r}
 # ditch "per chromosome removal" strategy as not necessary - as there is not supposed to be CNVs in each chromosome, just keep 25% of fractions with the highest "count" (i.e. they are present in most spots)
@@ -235,7 +203,7 @@ gr_df = data.frame(
 ```
 
 ```{r}
-# Reshape into sparse BED-like format
+# Reshape into sparse BED-like format, needed for most plotting libraries 
 gr_df_wide = gr_df %>%
   pivot_wider(
     names_from = barcode,
@@ -250,7 +218,7 @@ gr_df_wide = gr_df %>%
 # save object
 write.csv(
   gr_df_wide,
-  file = "/g/saka/Tatjana/data/data_for_testing_stuff/20250805_spotbased_cnv_calling_script5_LN0040HD_12BV2R_R1.csv",
+  file = "/g/saka/Tatjana/data/data_for_testing_stuff/20250912_spotbased_cnv_calling_script5_LN0040HD_12BV2R_R1_extracted_from_mcmc_obj.csv",
   row.names = FALSE)
 # for doing some visualizations in another script
 ```

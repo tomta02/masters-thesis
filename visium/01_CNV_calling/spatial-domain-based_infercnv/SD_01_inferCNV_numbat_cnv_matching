@@ -23,7 +23,7 @@ library(circlize)
 
 ```{r}
 # load output files
-shared = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2/LN0025/infercnv_numbat_matching.csv")
+shared = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2_long_cellgroupname_BMPN_0.3/LN0025/infercnv_numbat_matching.csv")
 shared = shared[,-c(1)]
 shared$chr = paste0("chr", shared$chr)
 shared = shared[shared$nr_match != 0, ]
@@ -31,13 +31,13 @@ shared = na.omit(shared) # remove NA vals ... fix this in preprocessing script
 ```
 
 ```{r}
-numbat = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2/LN0025/numbat_results.csv")
+numbat = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2_long_cellgroupname_BMPN_0.3/LN0025/numbat_results.csv")
 # gtrellis expects the integer nr. of the chromosome to be preceded by "chr"
 numbat$CHROM = paste0("chr", numbat$CHROM)
 ```
 
 ```{r}
-sicnv = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2/LN0025/infercnv_results.csv")
+sicnv = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2_long_cellgroupname_BMPN_0.3/LN0025/infercnv_results.csv")
 sicnv$chr = paste0("chr", sicnv$chr)
 ```
 
@@ -48,20 +48,7 @@ sicnv_split = sicnv %>%
   separate_rows(cell_group_name, sep = ",") %>%
   group_split(cell_group_name, .keep = TRUE)
 
-names(sicnv_split) = c("diffuse_fdc", "interfollicular_malig", "other")
-```
-
-```{r}
-# elemeents of sicnv_split are tibbles, convert to df to join
-sicnv_split = lapply(sicnv_split, as.data.frame)
-
-# append other dfs to make "master_list"
-master_list = c(
-  sicnv_split,
-  list(sicnv, numbat, shared)
-)
-
-names(master_list) = c("diffuse_fdc", "interfollicular_malig", "other", "inferCNV_combined", "numbat", "shared")
+names(sicnv_split) = c("diffuse_fdc_low", "interfollicular_malig_low", "other")
 ```
 
 Converting our data to genomic ranges objects, so we can make plots with gtrellis
@@ -91,7 +78,7 @@ for (i in seq_along(sicnv_split)) {
 Next, make trellis graph of CNVs in numbat, CNVs in siCNV and their overlaps
 
 ```{r}
-pdf("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2/LN0025/gtrellis_plot_LN0025.pdf", width = 20, height = 5)
+pdf("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2_long_cellgroupname_BMPN_0.3/LN0025/gtrellis_plot_LN0025.pdf", width = 20, height = 8)
 
 # for some reason, this does not work
 col_fun = c("amp" = "red", "del" = "blue")
@@ -105,7 +92,7 @@ gtrellis_layout(
   n_track = 6, 
   equal_width = FALSE,
   title = "CNVs inferred using inferCNV, numbat, and overlapping CNVs - LN0025", 
-  track_ylab = c("shared", "numbat", "inferCNV_all", "diffuse_fdc", "interfollicular_malig", "other"), 
+  track_ylab = c("shared", "numbat", "inferCNV_all", "diffuse_fdc_low", "interfollicular_malig_low", "other"), 
   track_axis = FALSE,
   xlab = "")
 
@@ -165,6 +152,21 @@ add_rect_track(
   #gp = gpar(col = NA, fill = col_fun[mcols(sicnv_sd[[4]])$cnv_state])
   #)
 
+#add_rect_track(
+  #sicnv_sd[[5]],
+  #track = 9,
+  #h1 = 1, 
+  #h2 = 0,
+  #gp = gpar(col = NA, fill = col_fun[mcols(sicnv_sd[[5]])$cnv_state])
+  #)
+
+#add_rect_track(
+  #sicnv_sd[[6]],
+  #track = 10,
+  #h1 = 1, 
+  #h2 = 0,
+  #gp = gpar(col = NA, fill = col_fun[mcols(sicnv_sd[[6]])$cnv_state])
+  #)
 
 dev.off()
 

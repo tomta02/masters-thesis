@@ -29,6 +29,8 @@ cnv_regs_spots_r = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercn
 
 # read in whole Visium spot-based mcmc infercnv object
 mcmc_spots = readRDS("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/jobarray_all_pat_roi_per_spot_BayesMaxPNormal_0.3/LN0040HD_12BV2R_R1/BayesNetOutput.HMMi6.hmm_mode-cells/MCMC_inferCNV_obj.rds")
+
+
 ```
 
 ```{r}
