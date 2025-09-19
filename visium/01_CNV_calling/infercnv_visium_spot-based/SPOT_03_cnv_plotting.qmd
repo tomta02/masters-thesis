@@ -87,17 +87,26 @@ for (i in 1:fin) {
 ```
 
 ```{r}
-saveRDS(char_mat, "/g/saka/Tatjana/data/data_for_testing_stuff/0X_spot_based_cnv_plotting/LN0040HD_12BV2R_R1_cnv_char_mat_for_complexheatmap.rds")
+#saveRDS(char_mat, "/g/saka/Tatjana/data/data_for_testing_stuff/0X_spot_based_cnv_plotting/LN0040HD_12BV2R_R1_cnv_char_mat_for_complexheatmap.rds")
+char_mat = readRDS("/g/saka/Tatjana/data/data_for_testing_stuff/0X_spot_based_cnv_plotting/LN0040HD_12BV2R_R1_cnv_char_mat_for_complexheatmap.rds")
+```
+
+```{r}
+### IMPORTANT: set factor lvls manually, otherwise chromosomes are sorted alphanumerically when plotting (chr1, chr10, chr11, ...)
+# need to do to display "char_mat_t" correctly in heatmap
+chrom_lvls = c(paste0("chr", 1:22), "chrX", "chrY")
+chroms_fact = factor(chroms, levels = chrom_lvls)
 ```
 
 ```{r}
 # transpose so rows = Visium spots
-char_mat_t = t(char_mat)
+#char_mat_t = t(char_mat)
 #charmat_t = t(charmat)
 
 # extract chromosome from colnames of char mat, get unique chroms
 chroms = sub(":.*", "", colnames(char_mat_t))
 chroms_u = unique(chroms)
+chroms_o = order(chroms)
 
 # get bin start pos from colnames
 starts = as.numeric(sub(".*:([0-9]+)-([0-9]+)", "\\1", colnames(char_mat_t)))
@@ -124,7 +133,7 @@ ideo_anno = HeatmapAnnotation(
   height = unit(0.5, "cm")
 )
 
-png("/g/saka/Tatjana/data/data_for_testing_stuff/CNV_heatmap_test.png", width = 8000, height = 1000, res = 300) 
+png("/g/saka/Tatjana/data/data_for_testing_stuff/CNV_heatmap_test3.png", width = 8000, height = 1000, res = 300) 
 
 
 # now, make heatmap with column split to get individual "boxes" for chromosomes
@@ -138,9 +147,10 @@ htmp = Heatmap(
   cluster_rows = FALSE,
   cluster_columns = FALSE,
   show_column_names = FALSE,
-  column_split = chroms,
+  column_split = chroms_fact,
   column_title = chroms_u,
   bottom_annotation = ideo_anno,
+  column_order = colnames(char_mat_t)
   # width = rep(unit(1, "cm"), length(chroms_u)) # heatmap not being plotted when I do this, look for it later
 )
 
