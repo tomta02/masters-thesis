@@ -23,12 +23,12 @@ library(infercnv)
 ```
 
 ```{r}
-# loading output of "spot-based" infercnv run, singular ROI: LN0040HD_12BV2R_R1
+# loading output of "spot-based" infercnv run, singular ROI: LN0438_MAAFHY1_R1
 # raw results (post MCMC)
-cnv_regs_spots_r = read.table("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/jobarray_all_pat_roi_per_spot_BayesMaxPNormal_0.3/LN0040HD_12BV2R_R1/17_HMM_predHMMi6.hmm_mode-cells.pred_cnv_regions.dat", sep = "\t", header = TRUE)
+cnv_regs_spots_r = read.table("/scratch/tomek/01_siCNV/infercnv_outs_spotbased/NEW_spatial_doms_prelim_growth2/jobarray_all_pat_per_roi_spotbased_BMPN_0.5LN0438_MAAFHY1_R1/17_HMM_predHMMi6.hmm_mode-cells.pred_cnv_regions.dat", sep = "\t", header = TRUE)
 
 # read in whole Visium spot-based mcmc infercnv object
-mcmc_spots = readRDS("/scratch/tomek/01_siCNV/RESULTS_spotbased_infercnv_per_roi/jobarray_all_pat_roi_per_spot_BayesMaxPNormal_0.3/LN0040HD_12BV2R_R1/BayesNetOutput.HMMi6.hmm_mode-cells/MCMC_inferCNV_obj.rds")
+mcmc_spots = readRDS("/scratch/tomek/01_siCNV/infercnv_outs_spotbased/NEW_spatial_doms_prelim_growth2/jobarray_all_pat_per_roi_spotbased_BMPN_0.5LN0438_MAAFHY1_R1/BayesNetOutput.HMMi6.hmm_mode-cells/MCMC_inferCNV_obj.rds")
 
 
 ```
@@ -51,7 +51,7 @@ cellprobs = map2(
   ~ {
     # integer barcode indices from cell_gene, look for bc names in "bc"
     barcode_idx = as.integer(.y$Cells)
-    colnames(.x) - bc[barcode_idx]
+    colnames(.x) = bc[barcode_idx]
     .x
   }
 )
@@ -81,13 +81,22 @@ cnvs_proto = cnvs_raw %>%
 
 ```{r}
 # last steps: apply qc filtering thresholds to cnvs called: remove all cnvs with reported state "3" in col "state_mcmc" (="normal", no amp/del), remove all cnvs with probability (col: "p") < 0.7, to keep only high confidence cnvs
-cnvs_fin = cnvs_proto[cnvs_proto$state_mcmc != 3 &
-                      cnvs_proto$p > 0.7, ]
+
+cnvs_fin = cnvs_proto[cnvs_proto$state_mcmc != 3, ] #&
+                      #cnvs_proto$p > 0.7, ]
+
+# changed approach: export all cnvs, no matter the probability, and do filtering based on CNV probability later downstream.
+```
+
+```{r}
+# additionally, add some further columns to "cnvs_fin" that will be useful downstream
+cnvs_fin$width = cnvs_fin$end - cnvs_fin$start
+cnvs_fin$width_kb = (cnvs_fin$width)/1000
 ```
 
 ```{r}
 # save final result
-write.table(cnvs_fin, "/g/saka/Tatjana/data/data_for_testing_stuff/prelim_cnv_analysis_spotbased/pat40HD_R1_cnvs_extracted_from_mcmc_infcnvobj.cnv",
+write.table(cnvs_fin, "/g/saka/Tatjana/data/data_for_testing_stuff/prelim_cnv_analysis_spotbased/LN0438_MAAFHY1_R1_cnvs_extracted_from_mcmc_infcnvobj.cnv",
             row.names = FALSE,
             col.names = TRUE,
             sep = "\t")
