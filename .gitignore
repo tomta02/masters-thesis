@@ -3,6 +3,7 @@
 .Rhistory
 .Rproj.user/
 .slurmR/
+.slurm/
 
 omnipathr-log/
 codex/
