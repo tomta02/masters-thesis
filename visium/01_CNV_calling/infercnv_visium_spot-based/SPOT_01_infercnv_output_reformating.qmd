@@ -13,6 +13,17 @@ script for reformating the outputs of inferCNV to obtain following info for each
 3.) cnv state (amp or del; nr in range of 1-6)
 
 ```{r}
+args = commandArgs(trailingOnly = TRUE)
+
+cnv_regs = args[1]
+mcmc_obj = args[2]
+out_dir = args[3]
+ext = args[4]
+
+set.seed(99)
+```
+
+```{r}
 # loading libraries
 library(Seurat)
 library(SeuratObject)
@@ -25,29 +36,31 @@ library(infercnv)
 ```{r}
 # loading output of "spot-based" infercnv run, singular ROI: LN0438_MAAFHY1_R1
 # raw results (post MCMC)
-cnv_regs_spots_r = read.table("/scratch/tomek/01_siCNV/infercnv_outs_spotbased/NEW_spatial_doms_prelim_growth2/jobarray_all_pat_per_roi_spotbased_BMPN_0.5LN0438_MAAFHY1_R1/17_HMM_predHMMi6.hmm_mode-cells.pred_cnv_regions.dat", sep = "\t", header = TRUE)
+cnv_regs = read.table(cnv_regs, sep = "\t", header = TRUE)
 
 # read in whole Visium spot-based mcmc infercnv object
-mcmc_spots = readRDS("/scratch/tomek/01_siCNV/infercnv_outs_spotbased/NEW_spatial_doms_prelim_growth2/jobarray_all_pat_per_roi_spotbased_BMPN_0.5LN0438_MAAFHY1_R1/BayesNetOutput.HMMi6.hmm_mode-cells/MCMC_inferCNV_obj.rds")
+mcmc = readRDS(mcmc_obj)
 
 
 ```
 
 ```{r}
 # start of data reformating: "cell_probabilities" slot in mcmc object.
-cellprobs = mcmc_spots@cell_probabilities
+cellprobs = mcmc@cell_probabilities
+
 # get their names from cnv_regions slot
-names(cellprobs) = as.character(mcmc_spots@cnv_regions)
+cnvregs = mcmc@cnv_regions
+names(cellprobs) = as.character(cnvregs)
 
 # cellprobs not state the barcode where each cnv appears - get bc information from count.data, and match it to cnvs in second step using the integer barcode indices in "cell_gene" slot of mcmc object
-bc = colnames(mcmc_spots@count.data)
+bc = colnames(mcmc@count.data)
 ```
 
 ```{r}
 # obtain barcode names by matching bc indices to bc names
 cellprobs = map2(
   cellprobs,
-  mcmc_spots@cell_gene,
+  mcmc@cell_gene,
   ~ {
     # integer barcode indices from cell_gene, look for bc names in "bc"
     barcode_idx = as.integer(.y$Cells)
@@ -73,7 +86,7 @@ cnvs_raw = data.frame(
 # prototype of final res: extracted info from mcmc object (= post mcmc, post bayes net -> only keep most probable cnvs) & merged with most important cols of raw "cnv_regs_spots_r" output file
 cnvs_proto = cnvs_raw %>%
   left_join(
-    cnv_regs_spots_r %>%
+    cnv_regs %>%
       select(cnv_name, cell_group_name, state, chr, start, end),
     by = c("cnv_name" = "cnv_name", "bc_name" = "cell_group_name")
   )
@@ -96,9 +109,22 @@ cnvs_fin$width_kb = (cnvs_fin$width)/1000
 
 ```{r}
 # save final result
-write.table(cnvs_fin, "/g/saka/Tatjana/data/data_for_testing_stuff/prelim_cnv_analysis_spotbased/LN0438_MAAFHY1_R1_cnvs_extracted_from_mcmc_infcnvobj.cnv",
+write.table(cnvs_fin, 
+            paste0(outdir, ext, "cnv_final.csv"),
             row.names = FALSE,
             col.names = TRUE,
             sep = "\t")
 
+```
+
+```{r}
+# save raw data as well - since whole mcmc object is too large to save it whole, save the components used to create the "cnv_final.csv" in case it ever needs to be built again
+write.table(cellprobs, 
+            paste0(outdir, ext, "RAW_cell_probabilities_cnv.csv"))
+
+write.table(cnvregs,
+            paste0(outdir, ext, "RAW_cnv_regions.csv"))
+
+write.table(bc,
+            paste0(outdir, ext, "RAW_spot_barcode_names.csv"))
 ```
