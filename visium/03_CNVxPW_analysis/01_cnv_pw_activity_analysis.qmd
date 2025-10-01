@@ -1,0 +1,367 @@
+---
+title: "01_cnv_pw_activity_analysis"
+author: "Tatjana Tomek"
+format: html
+editor: visual
+---
+
+## CNV x pathway analysis
+
+```{r}
+# load libraries
+library(tidyverse)
+library(magrittr)
+library(qs)
+library(GenomicRanges)
+library(tidyverse)
+library(gtrellis)
+```
+
+```{r}
+# load pathway activity values list and p values list of all ROI
+act = qread("/g/saka/Tatjana/data/03_CNVxPW_analysis/01_pw_act_vals_all_roi.qs",
+           nthreads = 32)
+
+pval = qread("/g/saka/Tatjana/data/03_CNVxPW_analysis/01_pvalues_pw_all_roi.qs",
+           nthreads = 32) 
+```
+
+```{r}
+# load cnv data for LN0438_MAAFHY1_R1
+cnv = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/LN0438_MAAFHY1_R1/SPOT_02_cnvs_cleaned_binarized.csv")
+cnv[is.na(cnv)] = "NA" # convert NA values to strings - i.e. absence of a CNV, = neutral. Otherwise issues downstream. Deal with later
+```
+
+```{r}
+cnv_long = cnv %>%
+  pivot_longer(
+    cols = 7:ncol(.),       
+    names_to = "barcode",
+    values_to = "state"    
+  )
+```
+
+```{r}
+gr = GRanges(seqnames = cnv_long$chr,
+             ranges = IRanges(
+               start = cnv_long$start,
+               end = cnv_long$end),
+             barcode = cnv_long$barcode,
+             state = cnv_long$state
+)
+```
+
+```{r}
+# MAKING 'REFERENCE' cnvs
+ref = reduce(gr, with.revmap = TRUE)
+
+mcols(ref) = do.call(rbind, 
+                    lapply(mcols(ref)$revmap, function(i){
+                      data.frame(
+                        barcode = paste(mcols(gr)$barcode[i], collapse=","),
+                        state = paste(mcols(gr)$state[i], collapse=",")
+                      )
+                    }))
+```
+
+```{r}
+# next step: converting GenomicRanges object to data.frame - but first, make majority vote on the state column to add to the data.frame. - to be done here. Make function
+
+get_state_ref = function(x) {
+  states = strsplit(x, ",", fixed = TRUE)[[1]]
+  states = states[states %in% c("amp", "del")]
+  
+  n_amp = sum(states == "amp")
+  n_del = sum(states == "del")
+  
+  if (n_amp > n_del) {
+    return("amp")
+  } else if (n_del > n_amp) {
+    return("del")
+  } else {
+    return("tie")
+  }
+}
+
+get_state_bc = function(x) {
+  states = strsplit(x, ",", fixed = TRUE)[[1]]
+  states = states[states %in% c("amp", "del", "NA")]
+  
+  n_amp = sum(states == "amp")
+  n_del = sum(states == "del")
+  n_na  = sum(states == "NA")
+  
+  if (n_na > n_amp && n_na > n_del) {
+    return(NA)
+  } else if (n_amp > n_del) {
+    return("amp")
+  } else if (n_del > n_amp) {
+    return("del")
+  } else {
+    return("tie")
+  }
+}
+
+```
+
+```{r}
+# next step: converting GenomicRanges object to data.frame - but first, make majority vote on the state column to add to the data.frame. - to be done here
+ref_states = lapply(mcols(ref)$state, get_state_ref)
+ 
+```
+
+```{r}
+# construct data.frame with state column created above
+ref_df = data.frame(
+  chr = as.character(seqnames(ref)),
+  start = start(ref),
+  end = end(ref),
+  width = width(ref),
+  width_kb = width(ref) / 1000,
+  state = unlist(ref_states)
+  )
+```
+
+```{r}
+# for "gtrellis plot" of reference cnvs (to show Kristy)
+ref_gr_fin = GRanges(seqnames = ref_df$chr,
+             ranges = IRanges(
+               start = ref_df$start,
+               end = ref_df$end),
+             state = ref_df$state
+)
+```
+
+```{r}
+# make gtrellis plot
+pdf("/g/saka/Tatjana/data/data_for_testing_stuff/20250928_LN0438_MAAFHY1_R1_reference_cnv_states_TEST.pdf", width = 20, height = 2)
+
+col_fun = c("amp" = "red", "del" = "blue")
+
+gtrellis_layout(
+  species = "hg38",
+  add_name_track = TRUE,
+  add_ideogram_track = TRUE,
+  n_track = 1, 
+  equal_width = FALSE,
+  title = "reference CNVs across all Visium spots - LN0438_MAAFHY1_R1", 
+  #track_ylab = c(""), 
+  track_axis = FALSE,
+  xlab = "")
+
+add_rect_track(
+  ref_gr_fin,
+  track = 2,
+  h1 = 1, 
+  h2 = 0,
+  gp = gpar(col = NA, fill = col_fun[mcols(ref_gr_fin)$state])
+  )
+
+dev.off()
+```
+
+### reducing GenomicRanges of each individual barcode of the sample:
+
+```{r}
+# for reducing genomic ranges of each individual visium barcode: 
+cnv_long_df = data.frame(cnv_long)
+cnv_long_df = na.omit(cnv_long_df)
+cnv_spots = split(cnv_long_df, cnv_long_df$barcode)
+```
+
+```{r}
+gr_lst = lapply(cnv_spots, function(df) {
+  GRanges(
+    seqnames = df$chr,
+    ranges = IRanges(start = df$start, end = df$end),
+    barcode = df$barcode,
+    state = df$state
+  )
+})
+
+```
+
+```{r}
+red_gr_lst = lapply(gr_lst, function(gr_obj) {
+  
+  red = reduce(gr_obj, with.revmap = TRUE)
+  
+  # Aggregate metadata using the revmap
+  aggregated_mcols = do.call(rbind, lapply(mcols(red)$revmap, function(i) {
+    data.frame(
+      barcode = paste(mcols(gr_obj)$barcode[i], collapse = ","),
+      state = paste(mcols(gr_obj)$state[i], collapse = ",")
+      )
+    }))
+    mcols(red) = aggregated_mcols
+  
+  red
+  })
+
+```
+
+```{r}
+# like above - for each element of "red_gr_list", need to do a majority voting for the CNV state:
+
+bc_states = lapply(red_gr_lst, function(gr) {
+  lapply(mcols(gr)$state, get_state_bc)
+  }
+)
+```
+
+```{r}
+gr_df_list = lapply(seq_along(red_gr_lst), function(i) {
+  
+  gr = red_gr_lst[[i]]
+  states = bc_states[[i]]
+  
+  data.frame(
+    chr = as.character(seqnames(gr)),
+    start = gr@ranges@start,
+    end = (gr@ranges@start + gr@ranges@width),
+    width = gr@ranges@width,
+    width_kb = width(gr) / 1000,
+    strand = as.character(strand(gr)),
+    state = unlist(states) 
+  )
+})
+
+names(gr_df_list) = names(red_gr_lst)
+```
+
+```{r}
+
+all(sapply(gr_df_list, nrow) == 40) # is true
+
+# check if all columns are the same across all df
+cols_to_check = c("chr", "start", "end")
+
+colslist = lapply(gr_df_list, function(df) df[cols_to_check])
+allsame = all(sapply(colslist, function(x) identical(x, colslist[[1]])))
+
+allsame
+
+# TRUE, TRUE
+```
+
+```{r}
+# matching operation: 
+# if gr_df_list[[barcode]]$state = NA (i.e. CNV is absent), cnv_test = 0
+# if gr_df_list[[barcode]]$state matches ref_df$state, cnv_test = 1
+# else (i.e mismatch between gr_df_list[[barcode]]$state and ref_df$state), cnv_test = 2
+
+gr_df_list = imap(gr_df_list, ~ .x %>%
+  mutate(
+    cnv_test = case_when(
+      is.na(state) ~ 0L,
+      state == ref_df$state ~ 1L,
+      TRUE ~ 2L),
+    # fill col "bc" with name(gr_df_list[bc]), to keep track of barcode name
+    bc = .y
+  ))
+
+```
+
+```{r}
+# since each row in the reference df "ref_df" and our spot-based dfs ("gr_df_list") correspond to a cnv, perform row-wise stacking (make df of only first row of all elements of "gr_df_list", then second df with all the "second rows" across all elements of "gr_df_list" ... since each row = a specific cnv, and each df of "gr_df_list" is a barcode. -> now we "per barcode view": singular barcode and all cnvs for that barcode; but we want "per cnv view": singular cnv and all barcodes + info whether a given bc has a cnv or not. 
+
+colstokeep = c("chr", "start", "end", "cnv_test", "bc")
+
+# num of rows for each df
+n_rows = nrow(gr_df_list[[1]])
+
+## list with each element corresponding to a given row index
+cnv_list = map(1:n_rows, function(i) {
+## For the current row index: extract *that specific* row from all dfs
+  map_dfr(gr_df_list, function(df) {
+    df[i, colstokeep]
+  })
+})
+
+```
+
+```{r}
+# extract LN0438 pathway activities, since that is the pat id of our current sample
+LN0438_act = act[[6]]
+```
+
+```{r}
+# replace dot by "-" in our barcode names, as below we do matching by bc - and the barcodes in the act df have a "-" instead of "."
+cnv_list = map(cnv_list, ~ .x %>%
+  mutate(bc = gsub("\\.", "-", bc))
+)
+
+```
+
+```{r}
+LN0438_act_df = LN0438_act %>%
+  rownames_to_column(var = "bc")  
+
+# iterate over cnv_list and join with LN_act_df by bc
+cnv_list = map(cnv_list, ~ .x %>%
+  left_join(LN0438_act_df, by = "bc")
+)
+
+```
+
+```{r}
+test_cnv = cnv_list[[1]]
+```
+
+```{r}
+# stats: run shapiro test for normality for each of the 14 pathways (looking at each of the "cnv_test" groups individually: 0, 1, 2), to determine whether to follow up w a regular unpaired 2-sample t test or a Mann Whitney U test. 
+# running test on singular cnv, as most likely dist will not be normal anyway and will have to go forth with Mann Whitney U
+cols_to_test = colnames(cnv_list[[2]][6:19])
+
+normtest = test_cnv %>%
+  pivot_longer(
+    cols = all_of(cols_to_test),
+    names_to = "variable",
+    values_to = "value"
+  ) %>%
+  group_by(cnv_test, variable) %>%
+  summarise(
+    shapiro = list(shapiro.test(value)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    statistic = map_dbl(shapiro, "statistic"),
+    p_value   = map_dbl(shapiro, "p.value")
+  ) %>%
+  select(-shapiro)
+
+```
+
+Need to calculate effect size also. Calculate Wilcox test for all samples:
+
+```{r}
+wilcox_list = list()
+
+for (i in seq_along(cnv_list)) {
+  df = cnv_list[[i]]
+  
+  wilcox_list[[i]] = df %>%
+    filter(cnv_test %in% c(0, 1)) %>%
+    pivot_longer(
+      cols = all_of(cols_to_test),
+      names_to = "variable",
+      values_to = "value"
+    ) %>%
+    group_by(variable) %>%
+    wilcox_test(value ~ cnv_test) %>%
+    left_join(
+      df %>% 
+        filter(cnv_test %in% c(0, 1)) %>%
+        pivot_longer(
+          cols = all_of(cols_to_test),
+          names_to = "variable",
+          values_to = "value"
+        ) %>%
+        group_by(variable) %>%
+        wilcox_effsize(value ~ cnv_test, ci = FALSE),
+      by = c("variable", "group1", "group2")
+    ) %>%
+    mutate(dataset = paste0("df_", i)) %>%
+    ungroup()
+}
+```
