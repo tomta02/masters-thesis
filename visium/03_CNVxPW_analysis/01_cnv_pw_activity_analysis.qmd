@@ -15,20 +15,19 @@ library(qs)
 library(GenomicRanges)
 library(tidyverse)
 library(gtrellis)
+library(rstatix)
 ```
 
 ```{r}
 # load pathway activity values list and p values list of all ROI
-act = qread("/g/saka/Tatjana/data/03_CNVxPW_analysis/01_pw_act_vals_all_roi.qs",
+act_flt = qread("/g/saka/Tatjana/data/03_CNVxPW_analysis/01_pw_act_vals_all_roi_flt_pval_smaller_0.05.qs",
            nthreads = 32)
 
-pval = qread("/g/saka/Tatjana/data/03_CNVxPW_analysis/01_pvalues_pw_all_roi.qs",
-           nthreads = 32) 
 ```
 
 ```{r}
 # load cnv data for LN0438_MAAFHY1_R1
-cnv = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/LN0438_MAAFHY1_R1/SPOT_02_cnvs_cleaned_binarized.csv")
+cnv = read.csv("/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/roi_based_cnvcalling/LN0438_MAAFHY1_R1/SPOT_02_cnvs_cleaned_binarized.csv")
 cnv[is.na(cnv)] = "NA" # convert NA values to strings - i.e. absence of a CNV, = neutral. Otherwise issues downstream. Deal with later
 ```
 
@@ -133,31 +132,31 @@ ref_gr_fin = GRanges(seqnames = ref_df$chr,
 ```
 
 ```{r}
-# make gtrellis plot
-pdf("/g/saka/Tatjana/data/data_for_testing_stuff/20250928_LN0438_MAAFHY1_R1_reference_cnv_states_TEST.pdf", width = 20, height = 2)
-
-col_fun = c("amp" = "red", "del" = "blue")
-
-gtrellis_layout(
-  species = "hg38",
-  add_name_track = TRUE,
-  add_ideogram_track = TRUE,
-  n_track = 1, 
-  equal_width = FALSE,
-  title = "reference CNVs across all Visium spots - LN0438_MAAFHY1_R1", 
-  #track_ylab = c(""), 
-  track_axis = FALSE,
-  xlab = "")
-
-add_rect_track(
-  ref_gr_fin,
-  track = 2,
-  h1 = 1, 
-  h2 = 0,
-  gp = gpar(col = NA, fill = col_fun[mcols(ref_gr_fin)$state])
-  )
-
-dev.off()
+# # make gtrellis plot
+# pdf("/g/saka/Tatjana/data/data_for_testing_stuff/20250928_LN0438_MAAFHY1_R1_reference_cnv_states_TEST2.pdf", width = 20, height = 2)
+# 
+# col_fun = c("amp" = "red", "del" = "blue")
+# 
+# gtrellis_layout(
+#   species = "hg38",
+#   add_name_track = TRUE,
+#   add_ideogram_track = TRUE,
+#   n_track = 1, 
+#   equal_width = FALSE,
+#   title = "reference CNVs across all Visium spots - LN0438_MAAFHY1_R1", 
+#   #track_ylab = c(""), 
+#   track_axis = FALSE,
+#   xlab = "")
+# 
+# add_rect_track(
+#   ref_gr_fin,
+#   track = 2,
+#   h1 = 1, 
+#   h2 = 0,
+#   gp = gpar(col = NA, fill = col_fun[mcols(ref_gr_fin)$state])
+#   )
+# 
+# dev.off()
 ```
 
 ### reducing GenomicRanges of each individual barcode of the sample:
@@ -210,6 +209,7 @@ bc_states = lapply(red_gr_lst, function(gr) {
 ```
 
 ```{r}
+# make dataframes out of the reduced genomic ranges, necessary for plotting
 gr_df_list = lapply(seq_along(red_gr_lst), function(i) {
   
   gr = red_gr_lst[[i]]
@@ -263,7 +263,7 @@ gr_df_list = imap(gr_df_list, ~ .x %>%
 ```
 
 ```{r}
-# since each row in the reference df "ref_df" and our spot-based dfs ("gr_df_list") correspond to a cnv, perform row-wise stacking (make df of only first row of all elements of "gr_df_list", then second df with all the "second rows" across all elements of "gr_df_list" ... since each row = a specific cnv, and each df of "gr_df_list" is a barcode. -> now we "per barcode view": singular barcode and all cnvs for that barcode; but we want "per cnv view": singular cnv and all barcodes + info whether a given bc has a cnv or not. 
+# since each row in the reference df "ref_df" and our spot-based dfs ("gr_df_list") correspond to a cnv, perform row-wise stacking (make df of only first row of all elements of "gr_df_list", then second df with all the "second rows" across all elements of "gr_df_list" ... since each row = a specific cnv, and each df of "gr_df_list" is a barcode. BECAUSE: right now we "per barcode view": singular barcode and all cnvs for that barcode; but we want "per cnv view": singular cnv and all barcodes + info whether a given bc has a cnv or not. 
 
 colstokeep = c("chr", "start", "end", "cnv_test", "bc")
 
@@ -281,8 +281,30 @@ cnv_list = map(1:n_rows, function(i) {
 ```
 
 ```{r}
+
+cnv_list = Map(function(df, i) {
+  df$cnv = paste0("cnv_", i)
+  df
+}, cnv_list, seq_along(cnv_list))
+
+```
+
+```{r}
 # extract LN0438 pathway activities, since that is the pat id of our current sample
-LN0438_act = act[[6]]
+LN0438_act = act_flt[[6]]
+
+# do some QC: disregard pathways for which we have significant activity value in < 5% of all bc
+# first, filter out bc belonging to our current ROI
+LN0438_act_flt = LN0438_act[grepl("LN0438_MAAFHY1_R1", rownames(LN0438_act)), ]
+
+# calc 10% threshold
+th = ceiling(nrow(LN0438_act_flt) * 0.1) 
+
+# keep cols w at least 10% activity values
+LN0438_act_flt = LN0438_act_flt[, 
+  colSums(!is.na(LN0438_act_flt)) >= th
+]
+
 ```
 
 ```{r}
@@ -294,12 +316,12 @@ cnv_list = map(cnv_list, ~ .x %>%
 ```
 
 ```{r}
-LN0438_act_df = LN0438_act %>%
+LN0438_act_flt_df = LN0438_act_flt %>%
   rownames_to_column(var = "bc")  
 
 # iterate over cnv_list and join with LN_act_df by bc
 cnv_list = map(cnv_list, ~ .x %>%
-  left_join(LN0438_act_df, by = "bc")
+  left_join(LN0438_act_flt_df, by = "bc")
 )
 
 ```
@@ -311,57 +333,111 @@ test_cnv = cnv_list[[1]]
 ```{r}
 # stats: run shapiro test for normality for each of the 14 pathways (looking at each of the "cnv_test" groups individually: 0, 1, 2), to determine whether to follow up w a regular unpaired 2-sample t test or a Mann Whitney U test. 
 # running test on singular cnv, as most likely dist will not be normal anyway and will have to go forth with Mann Whitney U
-cols_to_test = colnames(cnv_list[[2]][6:19])
 
-normtest = test_cnv %>%
-  pivot_longer(
-    cols = all_of(cols_to_test),
-    names_to = "variable",
-    values_to = "value"
-  ) %>%
-  group_by(cnv_test, variable) %>%
-  summarise(
-    shapiro = list(shapiro.test(value)),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    statistic = map_dbl(shapiro, "statistic"),
-    p_value   = map_dbl(shapiro, "p.value")
-  ) %>%
-  select(-shapiro)
+cols_to_test = colnames(cnv_list[[2]][7:19])
+# 
+# normtest = test_cnv %>%
+#   pivot_longer(
+#     cols = all_of(cols_to_test),
+#     names_to = "variable",
+#     values_to = "value"
+#   ) %>%
+#   group_by(cnv_test, variable) %>%
+#   summarise(
+#     shapiro = list(shapiro.test(value)),
+#     .groups = "drop"
+#   ) %>%
+#   mutate(
+#     statistic = map_dbl(shapiro, "statistic"),
+#     p_value   = map_dbl(shapiro, "p.value")
+#   ) %>%
+#   select(-shapiro)
 
 ```
 
 Need to calculate effect size also. Calculate Wilcox test for all samples:
 
 ```{r}
-wilcox_list = list()
+wilcox_list2 = list()
 
 for (i in seq_along(cnv_list)) {
   df = cnv_list[[i]]
   
-  wilcox_list[[i]] = df %>%
-    filter(cnv_test %in% c(0, 1)) %>%
+  # Extract the unique chr/start/end for this tibble
+  chr_val = unique(df$chr)
+  start_val = unique(df$start)
+  end_val = unique(df$end)
+  #cnv_val = unique(df$cnv)
+  
+  wilcox_list2[[i]] = df %>%
+    filter(cnv_test %in% c(0,1)) %>%
     pivot_longer(
       cols = all_of(cols_to_test),
       names_to = "variable",
       values_to = "value"
     ) %>%
     group_by(variable) %>%
-    wilcox_test(value ~ cnv_test) %>%
+    rstatix::wilcox_test(value ~ cnv_test) %>%
     left_join(
-      df %>% 
-        filter(cnv_test %in% c(0, 1)) %>%
+      df %>%
+        filter(cnv_test %in% c(0,1)) %>%
         pivot_longer(
           cols = all_of(cols_to_test),
           names_to = "variable",
           values_to = "value"
         ) %>%
         group_by(variable) %>%
-        wilcox_effsize(value ~ cnv_test, ci = FALSE),
+        rstatix::wilcox_effsize(value ~ cnv_test, ci = FALSE),
       by = c("variable", "group1", "group2")
     ) %>%
-    mutate(dataset = paste0("df_", i)) %>%
-    ungroup()
+    ungroup() %>%
+    mutate(
+      chr = chr_val,
+      start = start_val,
+      end = end_val,
+      #cnv = cnv_val
+    )
 }
+
+```
+
+```{r}
+# make 1 df out of list of dfs and log-transform p val
+all_wilcox_df = bind_rows(wilcox_list2) %>%
+  mutate(
+    logp = -log10(p),
+    cnv = paste0(chr, "_", round(start/1000), "_", round(end/1000)),
+    sig = ifelse(p < 0.05, "significant", "ns"),
+    variable = str_remove(variable, "\\.x$"),
+    chr_num = as.numeric(str_remove(chr, "chr"))  # extract numeric part
+  ) %>%
+  arrange(chr_num, start) %>%
+  mutate(
+    cnv = factor(cnv, levels = unique(cnv))
+  ) %>%
+  select(-chr_num)  
+    
+```
+
+```{r}
+ggplot(all_wilcox_df, aes(x = cnv, y = variable, fill = effsize, alpha = sig)) +
+  geom_tile() +
+  scale_fill_gradientn(
+    colours = c("blue", "yellow", "red"),
+    values = scales::rescale(c(0, 0.3, 0.5)),
+    limits = c(0, 0.5)
+  ) +
+  scale_alpha_manual(
+    values = c("ns" = 0.2, "significant" = 1)
+  ) +
+  theme_minimal() +
+  labs(
+    x = "CNV",
+    y = "Pathway",
+    fill = "Effect size",
+    alpha = "Significance (p < 0.05)"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
 ```
