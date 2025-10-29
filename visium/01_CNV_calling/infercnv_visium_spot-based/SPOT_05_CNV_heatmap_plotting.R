@@ -2,16 +2,12 @@
 # making heatmaps for spot-based CNV analysis #
 ###############################################
 
-## TODO: 
-# add spatial domain annotations to plot
-# add ROI name ("ext") as header
+args = commandArgs(trailingOnly = TRUE)
 
+dir = args[1]
+cmat = args[2]
+ext = args[3]
 
-#args = commandArgs(trailingOnly = TRUE)
-
-dir = "/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2" #args[1]
-cmat = "/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/LN0438_MAAFHY1_R1/cnv_char_mat_for_heatmap.qs" #args[2]
-ext = "LN0438_MAAFHY1_R1" #args[3]
 
 # load libraries
 library(qs)
@@ -20,14 +16,36 @@ library(GenomicRanges)
 library(EnrichedHeatmap)
 library(tidyverse)
 library(ComplexHeatmap)
+library(Matrix)
 
 
+# load spatial domain annotations per barcode, replace "-" by "."
+spd = qread("/g/saka/Tatjana/data/all_vis_bs_and_spatial_domain.qs", nthreads = 32)
+# only get patient sample needed right now
+# when doing roi-based analysis: extract just patient ID from "ext", to subset spatial domains by patient
+pat_id = sub("_.*", "", ext)
+
+
+spd = spd[[pat_id]]
+rownames(spd) = gsub("-", ".", rownames(spd))
+
+# load character matrix
 char_mat = qread(cmat, 
                  nthreads = 32)
 
+# ROI - based analysis:
+# subset all barcodes & spatial domains of that patient by the specific ROI
+spd = spd[colnames(char_mat), , drop = FALSE]
 
+# to later color the heatmap by spatial domains, get all unique ones
+doms = unique(spd[,1])
+
+# generate random colors for now, coordinate color coding w Kristy later
+domcols = setNames(rand_color(length(doms)), doms)
 # transpose so rows = Visium spots
 char_mat_t = t(char_mat)
+#rm(char_mat)
+#gc()
 
 # extract chromosome from colnames of char mat, get unique chroms
 chroms = sub(":.*", "", colnames(char_mat_t))
@@ -50,6 +68,13 @@ gr = GRanges(seqnames = chroms,
 # set cnv colors
 cnv_colors = c("amp" = "red", "del" = "blue", "NA" = "white") # very sloppy, NA vals should be NA and not string NA - quick workaround, fix later
 
+# make row annotation for spatial domains
+row_anno = rowAnnotation(
+  SpatialDomain = spd[,1],
+  col = list(SpatialDomain = domcols),
+  annotation_name_side = "top",
+  show_annotation_name = TRUE)
+
 # make annot for idogram: each chrom gets bar which spans its bins
 ideo_anno = HeatmapAnnotation(
   ideogram = anno_barplot(
@@ -64,8 +89,7 @@ ideo_anno = HeatmapAnnotation(
   height = unit(0.5, "cm")
 )
 
-png(paste0(dir, "/", ext, "/SPOT_04_TESTHEATMAP.png"), width = 8500, height = 2000, res = 300)
-
+png(paste0(dir, "/", ext, "/", "SPOT_05_heatmap_clustrows_TRUE.png"), width = 8500, height = 2000, res = 300)
 
 # now, make heatmap with column split to get individual "boxes" for chromosomes
 htmp = Heatmap(
@@ -75,13 +99,15 @@ htmp = Heatmap(
   na_col = "white", ##
   border = TRUE,
   row_title = "Visium spots",
-  cluster_rows = FALSE,
+  cluster_rows = TRUE,
   cluster_columns = FALSE,
   show_column_names = FALSE,
+  show_row_names = FALSE,
   column_split = chroms_fact,
   column_title = chroms_u,
   bottom_annotation = ideo_anno,
-  column_order = colnames(char_mat_t)
+  left_annotation = row_anno,
+  #column_order = colnames(char_mat_t)
   # width = rep(unit(1, "cm"), length(chroms_u)) # heatmap not being plotted when I do this, look for it later
 )
 
