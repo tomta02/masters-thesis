@@ -17,8 +17,8 @@ source /home/tomek/.Rprofile
 # get roi_id (extension) from all_rois_list.txt
 EXT=$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" //g/saka/Tatjana/data/roinames_visium_prelimgrowth2.txt)
 
-DATA_DIR="/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2"
-CNV_regs="${DATA_DIR}/${EXT}/SPOT_01_cnv_final_cnvprob_bigger_than_0.9.csv"
+DATA_DIR="/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/roi_based_cnvcalling"
+CNV_regs="${DATA_DIR}/${EXT}/NEW_SPOT_02_cnv_prob_greaterthan_0.9_bc_flt_no_normal_bc.csv"
 
 echo "Running job for $EXT"
-Rscript /g/saka/Tatjana/analysis/visium/01_CNV_calling/infercnv_visium_spot-based/SPOT_02_find_common_cnvs_w_genomic_ranges.R "$DATA_DIR" "$CNV_regs" "$EXT"
+Rscript /g/saka/Tatjana/analysis/visium/01_CNV_calling/infercnv_visium_spot-based/SPOT_03_find_common_cnvs_w_genomic_ranges.R "$DATA_DIR" "$CNV_regs" "$EXT"

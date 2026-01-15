@@ -18,22 +18,20 @@ library(qs)
 library(GenomicRanges)
 library(tidyverse)
 
-cnvs_to_flt = read.table(cnvs, header = TRUE)
+cnvs_to_flt = read.table(cnvs, header = TRUE, sep = ",")
 
-gr = GRanges(seqnames = cnv_flt$chr,
+gr = GRanges(seqnames = cnvs_to_flt$chr,
              ranges = IRanges(
-               start = cnv_flt$start,
-               end = cnv_flt$end,
-               names = cnv_flt$cnv_name),
-             barcode = cnv_flt$bc_name,
-             state = cnv_flt$state_mcmc,
-             cnv_name = cnv_flt$cnv_name
+               start = cnvs_to_flt$start,
+               end = cnvs_to_flt$end,
+               names = cnvs_to_flt$cnv_name),
+             barcode = cnvs_to_flt$bc_name,
+             state = cnvs_to_flt$state_mcmc,
+             cnv_name = cnvs_to_flt$cnv_name
 )
 
 # disjoin genomic ranges -> divide sequences found into non-overlapping "chunks"
-# count how often each of the non-overlapping segments appears,
-# take 75% quantile (i.e. most common segments across most barcodes) to keep high
-# confidence CNVs and get rid of noise
+# count how often each of the non-overlapping segments appears
 
 # disjoin. Reverse mapping = true, to keep metadata
 dj = disjoin(gr, with.revmap = TRUE)
@@ -53,6 +51,7 @@ mcols(dj)$count = ol
 
 # clean up disjoined genomic ranges: remove chunks that appear with very low frequency (i.e. noise) across all chromosomes
 # calc 75th percentile (i.e. top 25%) threshold
+## 20251005: calc median/50th quantile
 thresh = quantile(mcols(dj)$count, 0.75, na.rm = TRUE)
 dj_clean = dj[mcols(dj)$count >= thresh]
 
@@ -105,17 +104,19 @@ gr_df = data.frame(
 # write function to resolve multiple cnv states
 # very clumsy but only "adjacent" dual states were reported: no "triple states" (e.g. "4,5,6") and no unrelated states (e.g. "1,4")
 # therefore save these as "state_pairs_ok" and raise a warning in case the reported cnv state does not match "state_pairs_ok"
+
+# TODO: rewrite this - don't distinguish between "state pairs ok" or not ok, but implement simple majority vote - don't put "NA"
+# when the states seemingly disagree, but rather put result of max vote
 stateresolve = function(x,
                         state_pairs_ok = c("1,2", "2,1", # are both deletions
                                            "4,5", "5,4", # are both amplifications
                                            "5,6", "6,5")) { # are both amplifications
   x = na.omit(x)
 
-  # if state = singular value: return as is, no problem
-  if (length(x) == 1) return(x)
-
-  # if we have multiple vals like ("4", "4, "4", "5") then keep only unique ones ("4", "5") and collapse them
+  # if we have multiple vals like ("4", "4, "4", "5") then keep only unique ones ("4", "5") and collapse them -> "4,5"
   s = paste(unique(x), collapse = ",")
+  # if only one unique state, return it
+  if (length(unique(x)) == 1) return(s)
 
   # if state matches an "allowed" paiir, do max vote
   if (s %in% state_pairs_ok) {
@@ -141,7 +142,7 @@ gr_df_wide <- gr_df %>%
 
 # save finalized object
 write.csv(gr_df_wide,
-file = paste0(dir, "/", ext, "/SPOT_02_cnvs_cleaned.csv"),
+file = paste0(dir, "/", ext, "/NEW_SPOT_03_cnvs_cleaned_50th_quantile.csv"),
 row.names = FALSE)
 
 
@@ -158,7 +159,7 @@ gr_df_wide_bin = gr_df_wide %>%
 
 
 write.csv(gr_df_wide_bin,
-          file = paste0(dir, "/", ext, "/SPOT_02_cnvs_cleaned_binarized.csv"),
+          file = paste0(dir, "/", ext, "/NEW_SPOT_03_cnvs_cleaned_50th_quantile_binarized.csv"),
           row.names = FALSE)
 
 

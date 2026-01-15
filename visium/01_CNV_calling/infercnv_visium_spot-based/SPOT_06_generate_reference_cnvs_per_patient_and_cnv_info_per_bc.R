@@ -8,11 +8,10 @@
 
 args = commandArgs(trailingOnly = TRUE)
 
-dir = args[1] #"/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/roi_based_cnvcalling"
-cnvs = args[2] #paste0(dir, "/", ext, "/SPOT_02_cnvs_cleaned_binarized.csv") 
-ext = args[3] #"LN0438_MAAFHY1_R1" 
-outdir = args[4] #paste0("/g/saka/Tatjana/data/03_CNVxPW_analysis/", ext) 
-
+dir = args[1] # "/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/roi_based_cnvcalling" # 
+cnvs = args[2] # paste0(dir, "/", ext, "/NEW_SPOT_03_cnvs_cleaned_75th_quantile_binarized.csv") # NEW: NEW_SPOT_03_cnvs_cleaned_75th_quantile_binarized.csv) 
+ext = args[3] # "LN0438_MAAFHY1_R1" # 
+outdir = args[4] # paste0("/g/saka/Tatjana/data/03_CNVxPW_analysis/", ext) #
 
 # load libraries
 library(tidyverse)
@@ -22,7 +21,6 @@ library(GenomicRanges)
 library(tidyverse)
 library(gtrellis)
 
-# load cnv data for LN0438_MAAFHY1_R1
 cnv = read.csv(cnvs)
 cnv[is.na(cnv)] = "NA"
 
@@ -85,6 +83,7 @@ get_state_ref = function(x) {
   }
 }
 
+
 # for making majority vote, we need to convert reference cnvs from genomic ranges object
 # back into a data.frame. 
 # first, get majority vote to decide the states of the reference cnvs, then add this as col to the new df
@@ -100,6 +99,12 @@ ref_df = data.frame(
   state = unlist(ref_states)
 )
 
+# save ref df for numbat comparisons:
+#write.csv(ref_df,
+          #file = paste0(dir, "/", ext, "/NEW_SPOT_06_REFERENCE_CNVs_cleaned_from_NEW_SPOT_03_cnvs_cleaned_binarized.csv"),
+          #row.names = FALSE)
+
+
 # T_T to make neat plots of the cnvs found in each patient, we need to convert the data back into a genomicranges
 # object, since the gtrellis library works with data GenomicRanges format... 
 
@@ -111,9 +116,9 @@ ref_gr_fin = GRanges(seqnames = ref_df$chr,
 )
 
 
-# making gtrellis plot
-out_pdf = paste0(outdir, "/", ext, "_reference_cnv_states.pdf")
-pdf(out_pdf, width = 20, height = 2)
+# #making gtrellis plot
+out_png = paste0(dir, "/", ext, "/NEW_SPOT_06_reference_cnvs.png")
+png(out_png, width = 20, height = 2, units = "in", res = 400)
 
 col_fun = c("amp" = "red", "del" = "blue")
 
@@ -123,7 +128,7 @@ gtrellis_layout(
   add_ideogram_track = TRUE,
   n_track = 1,
   equal_width = FALSE,
-  title = paste0("reference CNVs across all Visium spots - ", ext),
+  title = paste0("reference CNVs across ROI - ", ext),
   #track_ylab = c(""),
   track_axis = FALSE,
   xlab = "")
@@ -140,26 +145,23 @@ dev.off()
 
 # NEXT STEP
 # maybe split script in 2 parts here?
-# in order to determine for each individual barcode whether it has a given cnv or not, 
-# we need to apply GenomicRanges::reduce to all intra-barcode chunks 
+# in order to determine for each individual barcode whether it has a given cnv or not,
+# we need to apply GenomicRanges::reduce to all intra-barcode chunks
 # this is due to how the data was processed & cleaned in script "SPOT_03_find_common_cnvs_w_genomic_ranges.R"
 # in order to get rid of noise.
-# in essence, for each spot, we have exactly the same nr. and sizes of genomic bins present. 
+# in essence, for each spot, we have exactly the same nr. and sizes of genomic bins present.
 # most of these will have been called with the same cnv_state ("amp", "del") like the cnvs of our reference dataset
 # but some not. In order to figure out which spots harbour the same cnvs we have in our reference cnvs:
 # 1.) convert cnvs into GenomicRanges object and apply intra-barcode GenomicRanges::reduce (with collecting "state" info by revmap)
-# 2.) onduct majority vote: is a given cnv present or absent?, convert data back to data.frame
+# 2.) conduct majority vote: is a given cnv present or absent?, convert data back to data.frame
 # 3.) Compare the "state" of the cnvs per barcode identified in step "2.)" with reference cnvs and perform matching operation:
 #           -> if cnv in barcode did not pass max vote (more ranges with "NA" compared to "amp"/"del") -> cnv absent, cnv_test = 0
 #           -> if cnv in barcode matches reference cnv state for that patient -> cnv_test = 1
 #           -> if cnv in barcode does not match reference cnv state for that patient -> cnv_test = 2
 
 # 1.) converting cnvs into genomicranges object (per barcode)"
-# first, pivot_longer to get data in right shape
-
-cnv_long_df = data.frame(cnv_long)
-cnv_long_df = na.omit(cnv_long_df)
-cnv_spots = split(cnv_long_df, cnv_long_df$barcode)
+cnv_long = na.omit(cnv_long). #### CHECK THIS!!
+cnv_spots = split(cnv_long, cnv_long$barcode)
 
 # make genomic ranges list (1 barcode = 1 list element)
 gr_lst = lapply(cnv_spots, function(df) {
@@ -172,11 +174,11 @@ gr_lst = lapply(cnv_spots, function(df) {
 })
 
 
-# apply GenomicRanges::reduce whiel keepin track of state data
+# for each element: apply GenomicRanges::reduce while keepin track of state data
 red_gr_lst = lapply(gr_lst, function(gr_obj) {
-  
+
   red = reduce(gr_obj, with.revmap = TRUE)
-  
+
   # keep metadata using revmap., saving state and bc info
   aggregated_mcols = do.call(rbind, lapply(mcols(red)$revmap, function(i) {
     data.frame(
@@ -185,7 +187,7 @@ red_gr_lst = lapply(gr_lst, function(gr_obj) {
     )
   }))
   mcols(red) = aggregated_mcols
-  
+
   red
 })
 
@@ -196,11 +198,11 @@ red_gr_lst = lapply(gr_lst, function(gr_obj) {
 get_state_bc = function(x) {
   states = strsplit(x, ",", fixed = TRUE)[[1]]
   states = states[states %in% c("amp", "del", "NA")]
-  
+
   n_amp = sum(states == "amp")
   n_del = sum(states == "del")
   n_na  = sum(states == "NA")
-  
+
   if (n_na > n_amp && n_na > n_del) {
     return(NA)
   } else if (n_amp > n_del) {
@@ -220,10 +222,10 @@ bc_states = lapply(red_gr_lst, function(gr) {
 
 # now, convert GenomicRanges object of each barcode into data.frame, save in list of data.frames
 gr_df_list = lapply(seq_along(red_gr_lst), function(i) {
-  
+
   gr = red_gr_lst[[i]]
   states = bc_states[[i]]
-  
+
   data.frame(
     chr = as.character(seqnames(gr)),
     start = gr@ranges@start,
@@ -231,25 +233,50 @@ gr_df_list = lapply(seq_along(red_gr_lst), function(i) {
     width = gr@ranges@width,
     width_kb = width(gr) / 1000,
     strand = as.character(strand(gr)),
-    state = unlist(states) 
+    state = unlist(states)
   )
 })
 
 names(gr_df_list) = names(red_gr_lst)
 
+
 # across all barcodes, the reduced ranges identified should be exactly the same as in the reference
-# object: just not clear if they passed the max vote and actually count as "cnv"
+# object: just not clear yet if they passed the max vote and actually count as "cnv"
 # double check whether ranges are the same across all bc
 
-cols_to_check = c("chr", "start", "end")
+colstocheck = c("chr", "start", "end", "width", "width_kb", "strand")
 
-colslist = lapply(gr_df_list, function(df) df[cols_to_check])
+colslist = lapply(gr_df_list, function(df) df[colstocheck])
 allsame = all(sapply(colslist, function(x) identical(x, colslist[[1]])))
 
 allsame
-# TRUE 
+# TRUE
 
-# 3.) matching operation: 
+##############################################################################
+# for exporting and further downstream analysis:
+# make combined df of the cleaned cnvs from the data wrangling steps above
+
+# since the first 6 columns are the same across all barcodes (see above),
+# take them from the first df
+meta = gr_df_list[[1]][, 1:6]
+
+# "state" col needs to be renamed to carry actual barcode name:
+statecols = lapply(seq_along(gr_df_list), function(i) {
+  df = gr_df_list[[i]]
+  setNames(df["state"], names(gr_df_list)[i])
+})
+
+# cbind and save
+final_cleaned_cnv_per_bc = cbind(meta, do.call(cbind, statecols))
+
+#write.csv(final_cleaned_cnv_per_bc,
+          #file = paste0(dir, "/", ext, "/NEW_SPOT_06_cleaned_cnvs_per_bc_from_NEW_SPOT_03_cnvs_cleaned_binarized_for_mking_charmat.csv"),
+          #row.names = FALSE)
+
+# ##############################################################################
+
+# 3.) NOW: COMPARING CNVS PER BARCODE TO CONSENSUS CNV ACROSS ALL BC
+# matching operation:
 # if gr_df_list[[barcode]]$state = NA (i.e. CNV is absent), cnv_test = 0
 # if gr_df_list[[barcode]]$state matches ref_df$state, cnv_test = 1
 # else (i.e mismatch between gr_df_list[[barcode]]$state and ref_df$state), cnv_test = 2
@@ -264,10 +291,10 @@ gr_df_list = imap(gr_df_list, ~ .x %>%
                       bc = .y
                     ))
 
-# each df in"gr_df_list" correspond to a different barcode, and within each df/each barcode, each row corresponds to 
+# each df in"gr_df_list" correspond to a different barcode, and within each df/each barcode, each row corresponds to
 # a different cnv found within that barcode
-# perform row-wise stacking: right now we "per barcode view": singular barcode and all cnvs for that barcode; 
-# but we want "per cnv view": singular cnv and all barcodes + info whether a given bc has a cnv or not. 
+# perform row-wise stacking: right now we "per barcode view": singular barcode and all cnvs for that barcode;
+# but we want "per cnv view": singular cnv and all barcodes + info whether a given bc has a cnv or not.
 
 colstokeep = c("chr", "start", "end", "cnv_test", "bc")
 
@@ -284,25 +311,25 @@ n_rows = nrows_v[1]
 
 # list with each element corresponding to a given row index (rows = the cnvs)
 cnv_list = map(1:n_rows, function(i) {
-  # for the current row index: extract *that specific* row from all dfs 
+  # for the current row index: extract *that specific* row from all dfs
   map_dfr(gr_df_list, function(df) {
     df[i, colstokeep]
   })
 })
 
 
-# add unique index to cnv, to keep track of cnvs later 
+# add unique index to cnv, to keep track of cnvs later
 cnv_list = Map(function(df, i) {
   df$cnv_id = i #paste0("cnv_", i)
   df
 }, cnv_list, seq_along(cnv_list))
 
 
-## RESULT: cnv_list contains following info: 
+## RESULT: cnv_list contains following info:
 # 1.) length of list corresponds to nr. of cnvs that was found,
 # 2.) for each cnv we have information on which barcodes the cnv was present in,
 # and which barcodes the cnv was not found in. (based on majority voting of genomic "chunks"
 # that were obtained from cleaning the data in script "SPOT_03_find_common_cnvs_w_genomic_ranges.R")
 
 # save this list for next step - comparing pathway activities found per barcode with the presence or absence of certain cnvs
-qsave(cnv_list, paste0(outdir, "/", ext, "_01_list_of_all_cnvs_found.qs"))
+# save(cnv_list, paste0(outdir, "/", ext, "_01_list_of_all_cnvs_found_NEW.qs"))

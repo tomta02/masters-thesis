@@ -1,10 +1,10 @@
 #!/bin/bash
-#SBATCH --job-name=find_common_cnvs
+#SBATCH --job-name=make_heatmaps
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=tatjana.tomek@embl.de
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=256G
+#SBATCH --mem=448G
 #SBATCH --time=10:00:00
 #SBATCH --array=0-21
 #SBATCH --error=.slurm/%A_%a_siCNV.err
@@ -17,8 +17,8 @@ source /home/tomek/.Rprofile
 # get roi_id (extension) from all_rois_list.txt
 EXT=$(sed -n "$((SLURM_ARRAY_TASK_ID+1))p" //g/saka/Tatjana/data/roinames_visium_prelimgrowth2.txt)
 
-DATA_DIR="/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2"
-CHARMAT="${DATA_DIR}/${EXT}/cnv_char_mat_for_heatmap.qs"
+DATA_DIR="/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/roi_based_cnvcalling"
+CHARMAT="${DATA_DIR}/${EXT}/NEW_SPOT_04_char_mat_from_NEW_SPOT_03_75thqn_bin_flt_0.9.qs"
 
 echo "Running job for $EXT"
-Rscript /g/saka/Tatjana/analysis/visium/01_CNV_calling/infercnv_visium_spot-based/SPOT_04_CNV_heatmap_plotting.R "$DATA_DIR" "$CHARMAT" "$EXT"
+Rscript /g/saka/Tatjana/analysis/visium/01_CNV_calling/infercnv_visium_spot-based/SPOT_05_CNV_heatmap_plotting.R "$DATA_DIR" "$CHARMAT" "$EXT"

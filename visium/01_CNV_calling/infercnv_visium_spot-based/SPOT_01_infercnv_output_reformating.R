@@ -22,16 +22,13 @@ dir.create(outs_path)
 
 # loading output of "spot-based" infercnv run, singular ROI: LN0438_MAAFHY1_R1
 # raw results (post MCMC)
-print("[x] reading in CNV regions table.")
 cnv_reg = read.table(cnv_regs, sep = "\t", header = TRUE)
 
 # read in whole Visium spot-based mcmc infercnv object
-print("[x] reading in mcmc object.")
 mcmc = readRDS(mcmc_obj)
 
 
 # start of data reformating: "cell_probabilities" slot in mcmc object.
-print("[x] extracting necessary properties from mcmc object.")
 cellprobs = mcmc@cell_probabilities
 
 # get their names from cnv_regions slot
@@ -54,8 +51,6 @@ cellprobs = map2(
 )
 
 # use "cellprobs" list to make df of cnvs - to later match match with raw output file "cnv_regs_spots_r" to get remaining cols that are necessary for downstream analysis (chr, start & stop genomic coords)
-print("[x] reformat CNV information.")
-
 cnvs_raw = data.frame(
   cnv_name = names(cellprobs),
   bc_name = sapply(cellprobs, function(x) colnames(x)),
@@ -74,34 +69,42 @@ cnvs_proto = cnvs_raw %>%
 
 # last steps: apply qc filtering thresholds to cnvs called: remove all cnvs with reported state "3" in col "state_mcmc" (="normal", no amp/del), remove all cnvs with probability (col: "p") < 0.7, to keep only high confidence cnvs
 
-cnvs_fin = cnvs_proto[cnvs_proto$state_mcmc != 3, ] #&
-#cnvs_proto$p > 0.7, ]
-# changed approach: export all cnvs, no matter the probability, and do filtering based on CNV probability later downstream.
+cnvs_fin = cnvs_proto[cnvs_proto$state_mcmc != 3, ] 
 
 # additionally, add some further columns to "cnvs_fin" that will be useful downstream
 cnvs_fin$width = cnvs_fin$end - cnvs_fin$start
 cnvs_fin$width_kb = (cnvs_fin$width)/1000
 
+# Save separate cnv file filteres by CNV probability - keep cnvs w prob > 90%
+cnvs_fin_flt_0.9 = cnvs_fin[cnvs_fin$p > 0.9, ]
 
-# save final result
-print("[x] saving final results.")
+
+# save final result - unfiltered, keeping all called cnvs
 write.table(cnvs_fin, 
-            paste0(outs_path, "/cnv_final.csv"),
+            paste0(outs_path, "/SPOT_01_cnv_final.csv"),
             row.names = FALSE,
             col.names = TRUE,
             sep = "\t")
 
+# save final result
+write.table(cnvs_fin_flt_0.9, 
+            paste0(outs_path, "/SPOT_01_cnv_final_cnvprob_bigger_than_0.9.csv"),
+            row.names = FALSE,
+            col.names = TRUE,
+            sep = "\t")
+
+
 # save raw data as well - since whole mcmc object is too large to save it whole, and is currently saved on scratch (no backups)
 # save the components used to create the "cnv_final.csv" in case it ever needs to be built again
 write.table(cellprobs, 
-            paste0(outs_path, "/RAW_cell_probabilities_cnv.csv"))
+            paste0(outs_path, "/SPOT_01_RAW_cell_probabilities_cnv.csv"))
 
 write.table(cnvregs,
-            paste0(outs_path, "/RAW_cnv_regions.csv"),
+            paste0(outs_path, "/SPOT_01_RAW_cnv_regions.csv"),
             row.names = TRUE,
             col.names = FALSE)
 
 write.table(bc,
-            paste0(outs_path, "/RAW_spot_barcode_names.csv"),
+            paste0(outs_path, "/SPOT_01_RAW_spot_barcode_names.csv"),
             row.names = TRUE,
             col.names = FALSE)
