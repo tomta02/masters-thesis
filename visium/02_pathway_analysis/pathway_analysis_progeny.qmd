@@ -40,11 +40,14 @@ pr = get_progeny(organism = 'human', top = 10000)
 # sum(pr$weight == 0) checking whether beta coefficients of progeny model have been set to 0 for any of the genes (in paper, they only kept coeff of top 100 scoring genes). But is not the case
 ```
 
-2025-09-09 amendment: instead of importing the PROGENy "pw x gene" matrix of weights using the standard command, customize matrix by 1. filtering for p-value, 2. sorting for weight
+2025-09-09 amendment: instead of importing the PROGENy "pw x gene" matrix of weights using the standard command (importing gene x pw matrix of top 500 genes sorted by p-value): customize PROGENy matrix by\
+1. filtering for p-value,\
+2. sorting for weight,\
+3. extracting top and bottom quartile of genes with the highest weight
 
 ```{r}
 # looking at progeny weights - check how many genes are significant per pw
-pr_sig_split <- pr %>%
+pr_sig_split = pr %>%
   filter(p_value < 0.05) %>%
   group_split(source) %>%
   map(~ arrange(.x, weight))
@@ -57,15 +60,13 @@ for (i in (pr_sig_split)) {
 Now that pr dfs are filtered by p-value and sorted by weight: take top 25% and bottom 25%
 
 ```{r}
-top25_split <- pr_sig_split %>%
+top25_split = pr_sig_split %>%
   map(~ bind_rows(
     slice_head(.x, prop = 0.25),
     slice_tail(.x, prop = 0.25)
   ))
-```
 
-```{r}
-pr_custom =  bind_rows(top25_split)
+pr_custom = bind_rows(top25_split)
 ```
 
 ```{r}
@@ -94,8 +95,6 @@ master_annot = map(pat_ids, ~ do.call(rbind, annot_list[grep(.x, names(annot_lis
 rm(visiumlist)
 gc()
 
-
-#### CONTINUE HERE
 ```
 
 ```{r}
@@ -140,6 +139,16 @@ act_list = map2(act_list, master_annot, ~ {
 })
 ```
 
+Save list of pathway activation values and p values
+
+```{r}
+qsave(act_list, "/g/saka/Tatjana/data/03_CNVxPW_analysis/01_pw_act_vals_all_roi.qs", 
+      nthreads = 32)
+
+qsave(pval_list, "/g/saka/Tatjana/data/03_CNVxPW_analysis/01_pvalues_pw_all_roi.qs", 
+      nthreads = 32)
+```
+
 ```{r}
 # also filter act_list based on pval: only keep activity values for each barcode and each pw where the pval < 0.05
 act_list_flt = lapply(seq_along(act_list), function(i) {
@@ -150,6 +159,24 @@ act_list_flt = lapply(seq_along(act_list), function(i) {
   df
 })
 names(act_list_flt) = names(act_list)
+
+qsave(act_list_flt, "/g/saka/Tatjana/data/03_CNVxPW_analysis/01_pw_act_vals_all_roi_flt_pval_smaller_0.05.qs", 
+      nthreads = 32)
+```
+
+```{r}
+# remove certain spatial domains that might not be needed for comparison
+spdo_to_remove = c("other")
+
+act_list_flt <- act_list_flt %>%
+ map(~ .x %>%
+        filter(!spatial_domain %in% spdo_to_remove))
+```
+
+```{r}
+act_list = act_list %>%
+  map(~ .x %>%
+        filter(!spatial_domain %in% spdo_to_remove))
 ```
 
 ### 2.2. plot heatmaps
@@ -165,14 +192,13 @@ anncolors = list(
     follicular_fdc.hi = "#CC79A7",
     follicular_fdc.lo = "#F0E442",
     interfollicular_malig.hi = "#D55E00",
-    interfollicular_malig.lo = "#E69F00",
-    other = "#A6761D"
+    interfollicular_malig.lo = "#E69F00"
+    #other = "#A6761D"
   )
 )
 ```
 
 ```{r}
-## CONTINUE HERE
 # generate all pheatmaps plots into a list
 plots = mapply(function(mat, nm) {
   
@@ -200,7 +226,7 @@ plots = mapply(function(mat, nm) {
 
 # save all plots
 # open png 
-png('/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_top_500/pw_acts_pval_smallerthan0.05_nocluster_custom_pr.png', width = 4500, height = 3000, res = 300) 
+png('/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_custom/pw_acts_pval_unfiltered_custom_pr_FOR_LABMEETING.png', width = 4500, height = 3000, res = 300) 
 
 # to save them together: arrange in grid
 grid.arrange(grobs = lapply(plots, function(p) p$gtable), ncol = 3)
@@ -238,11 +264,12 @@ plots_pv = mapply(function(mat, nm) {
     main = nm,
     show_rownames = FALSE, 
     silent = TRUE,
-    cluster_cols = FALSE)
+    cluster_cols = FALSE,
+    cluster_rows = FALSE)
 }, pval_list, names(pval_list), SIMPLIFY = FALSE)
 
 # open png 
-png("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_custom/progeny_pvals_custom.png", width = 4500, height = 3000, res = 300) 
+png("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_custom/progeny_pvals_custom_FOR_LABMEETING.png", width = 4500, height = 3000, res = 300) 
 
 # to save them together: arrange in grid
 grid.arrange(grobs = lapply(plots_pv, function(p) p$gtable), ncol = 3)
@@ -250,19 +277,10 @@ dev.off()
 
 ```
 
-Problem with this analysis: we need to plot one more property, which is p value (statistical significance of pathway being called), not possible with pheatmap (-\> check out other heatmap tools, mayb complexheatmap?)\
-
-1.  pvals per pw per spot often very high -\> try again running on bayesspace subclustered spots, perhaps pathway activity calling improves?
-
-    -\> for now now, aim to finish analysis of full visium spots first
-
-2.  do morans I analysis to get spatial differential pathway activity -\> extract spot coordinates w Seurat GetTissueCoordinates
-
-3.  make 2 scripts out of this -\> one for running decoupleR, separate one(s) for plotting
-
 ### Make violin plots for all samples
 
 ```{r}
+## amendment 2025-10-25: we did not end up focusing on pathway differences between spatial domains, but rather pathway differences between Visium spots containing certain CNVs vs. not containing CNVs - below code is not being used.
 act_list_flt_long = act_list_flt %>%
   map(~ .x %>%
         mutate(spatial_domain = as.factor(spatial_domain)) %>%
@@ -282,18 +300,6 @@ stats = act_list_flt_long %>%
         group_by(pathway) %>%
         kruskal_test(activity ~ spatial_domain)
       )
-
-## check out this error message!!
-
-#Error in `map()`:
-#ℹ In index: 4.
-#ℹ With name: LN0040HD.
-#Caused by error in `mutate()`:
-#ℹ In argument: `data = map(.data$data, .f, ...)`.
-#Caused by error in `map()`:
-#ℹ In index: 1.
-#Caused by error in `kruskal.test.default()`:
-#! all observations are in the same group
 ```
 
 ```{r}
@@ -305,8 +311,6 @@ posthoc = act_list_flt_long %>%
         add_xy_position(x = "spatial_domain")
       )
 
-## IMPORTANT: CHECK out warning message:Caused by warning in `max()`:
-# ! no non-missing arguments to max; returning -Inf
 ```
 
 ```{r}
@@ -331,7 +335,7 @@ plots = map2(
                   y = min(.x$activity, na.rm = TRUE) - 0.5, 
                   label = non_na),
               inherit.aes = FALSE, size = 3) +
-    facet_wrap(~ pathway, scales = "free_y", ncol = 1) +
+    facet_wrap(~ pathway, scales = "free_y", ncol = 4) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 45, hjust = 1),
           strip.text = element_text(face = "bold"))
@@ -355,10 +359,6 @@ plots_with_stats = map2(
 
 ```{r}
 for (idx in seq_along(plots_with_stats)) {
-  ggsave(paste0("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_custom/violinplot_cust_", idx, ".png"), plots_with_stats[[idx]], width = 5, height = 25, dpi = 300)
+  ggsave(paste0("/g/saka/Tatjana/data/02_pathway_analysis/progeny_decoupler/sct_normalized/pr_custom/violinplot_cust_4cols_FORLABMEETING", idx, "_FOR_LABMEETING2.png"), plots_with_stats[[idx]], width = 20, height = 15, dpi = 300)
 }
 ```
-
-### Follow up:
-
-quick and dirty: pick 2-3 examples of significantly altered pathways across spatial domains, and look at pw activation - but first, compute same results with PROGENy "top 1000" & also with log-normalized counts instead of SCT counts
