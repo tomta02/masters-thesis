@@ -3,9 +3,9 @@ library(dplyr)
 library(readr)
 
 # dir, patterns of csv files to merge
-d = "/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/20251004/"
-i = paste0(d, "01_UNMERGED")
-o = paste0(d, "02_MERGED")
+d = "/g/saka/Tatjana/data/01_CNV_analysis/01_infercnv_output/spotbased/all_pat_analyzed_spotbased_BMPN_0.3_NEW_prelim_growth2/whole_patient_cnvcalling/20251004/"
+i = paste0(d, "01_UNMERGED") #in
+o = paste0(d, "02_MERGED") # out
 patterns = c("LN0025",
              "LN0027",
              "LN0438",
@@ -29,6 +29,3 @@ lapply(patterns, function(pat) {
   out = paste0(o, "/", pat, "_merged.csv")
   merge_csv(i, pat, out)
 })
-
-
-

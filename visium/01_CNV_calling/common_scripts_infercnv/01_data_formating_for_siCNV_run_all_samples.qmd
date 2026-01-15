@@ -7,9 +7,6 @@ editor: visual
 
 ## CNV analysis - data formatting
 
-Preprocessing of the Visium data to bring it into shape for input into siCNV.\
-All patient samples together
-
 ```{r}
 # load libraries
 library(qs)
@@ -27,10 +24,6 @@ library(Matrix)
 First, load list of Visium objects (after QC)
 
 ```{r}
-# OLD:
-#visiumlist_old = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_10_visium_flt.qs", nthreads = 32)
-# NEW:
-
 visiumlist = qread("/g/saka/Kristy/projects/composite/analysis/rdata/02_13_visium_flt.qs", nthreads = 32)
 ```
 
@@ -49,8 +42,6 @@ healthy_annot = read.csv('/g/saka/Tatjana/data/V1_healthy_human_lymph_node/gc_an
 # Full sample names is saved as "names(visiumlist)". Get patient IDs by extracting only the part before first underscore, keep only the unique ones (as we have multiple samples from the same patient)
 pat_ids = sub("_.*", "", names(visiumlist)) %>% unique()
 ```
-
-Now add all the functions that I need to do for an individual sample - tomorrow expand it to do it for all samples at once:
 
 "master_list": list of 6 lists (1 "sublist" per patient), each element (each "sublist") = list of seurat objects belonging to that patient.
 

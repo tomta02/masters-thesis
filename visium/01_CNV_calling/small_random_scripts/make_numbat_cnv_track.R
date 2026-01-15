@@ -3,11 +3,11 @@
 # similar to reference cnv plot in SPOT_06
 ############################################
 
-args = commandArgs(trailingOnly = TRUE)
+# args = commandArgs(trailingOnly = TRUE)
 
-numbat = args[1] 
-genotypes = args[2] 
-pat_id = args[3] 
+numbat = "/g/saka/Kristy/projects/composite/analysis/rdata/03_03_numbat_list.qs" #args[1] 
+genotypes = "/g/saka/Kristy/projects/composite/analysis/rdata/00_numbat_gt_forTatjana.qs" #args[2] 
+pat_id = "LN0438" #args[3] 
 
 
 # load libraries

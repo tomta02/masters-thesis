@@ -80,7 +80,7 @@ Next, make trellis graph of CNVs in numbat, CNVs in siCNV and their overlaps
 ```{r}
 pdf("/g/saka/Tatjana/data/01_CNV_analysis/RESULTS_inferCNV_numbat_matching_per_spatial_domain/NEW_spatial_domain_prelim_growth2_long_cellgroupname_BMPN_0.3/LN0025/gtrellis_plot_LN0025.pdf", width = 20, height = 8)
 
-# for some reason, this does not work
+
 col_fun = c("amp" = "red", "del" = "blue")
 
 
