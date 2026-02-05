@@ -1,0 +1,28 @@
+B:
+  subtypes:
+    - name: B_CD20
+      markers: ["CD20+", "CD19-"]
+    - name: B_CD19
+      markers: ["CD20-", "CD19+"]
+    - name: B_CD19_CD20
+      markers: ["CD20+", "CD19+"]
+T:
+  subtypes:
+    - name: T_h
+      markers: ["CD4+", "CD8-"]
+    - name: T_h_naive
+      markers: ["CD4+", "CD8-", "CD45RA+"]
+    - name: T_h_mem
+      markers: ["CD4+", "CD8-", "CD45RO+"]
+    - name: T_reg
+      markers: ["CD4+", "CD8-", "CD25+", "FoxP3+"]
+    - name: T_reg
+      markers: ["CD4+", "CD8-", "CD25+", "FoxP3-"]
+    - name: T_reg
+      markers: ["CD4+", "CD8-", "CD25-", "FoxP3+"]
+    - name: T_tox
+      markers: ["CD4-", "CD8+"]
+    - name: T_tox_naive
+      markers: ["CD4-", "CD8+", "CD45RA+"]
+    - name: T_tox_mem
+      markers: ["CD4-", "CD8+", "CD45RO+"]

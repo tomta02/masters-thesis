@@ -1,0 +1,897 @@
+thresholds:
+  LN0025_1DA209_R1:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.2
+    CD11c: 0.3
+    CD138: 0.2
+    CD14: ''
+    CD140b (PDGRb): 0.45
+    CD15: 0.3
+    CD16: ''
+    CD163: ''
+    CD19: 0.25
+    CD1C: ''
+    CD20: 0.2
+    CD206: ''
+    CD21: 0.4
+    CD25: ''
+    CD3: 0.3
+    CD31: ''
+    CD34: 0.3
+    CD35: 0.3
+    CD4: 0.3
+    CD4 Cy7: ''
+    CD45: ''
+    CD45RA: 0.3
+    CD45RO: 0.2
+    CD56: 0.3
+    CD62L: ''
+    CD68: 0.3
+    CD73: ''
+    CD79a: ''
+    CD8: 0.3
+    CD90: 0.3
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: ''
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.2
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.3
+    PD1: ''
+    PNAd: ''
+    Podoplanin: 0.3
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.2
+  LN0027_1VL5B2_R1:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.125
+    CD11c: 0.35
+    CD138: 0.1
+    CD14: ''
+    CD140b (PDGRb): 0.1
+    CD15: 0.25
+    CD16: ''
+    CD163: ''
+    CD19: 0.05
+    CD1C: ''
+    CD20: 0.1
+    CD206: ''
+    CD21: ''
+    CD25: 0.1
+    CD3: 0.2
+    CD31: 1.0
+    CD34: 0.15
+    CD35: 0.5
+    CD4: 0.25
+    CD4 Cy7: ''
+    CD45: 0.05
+    CD45RA: 0.1
+    CD45RO: 0.15
+    CD56: 0.3
+    CD62L: ''
+    CD68: 0.15
+    CD73: ''
+    CD79a: ''
+    CD8: 0.2
+    CD90: 0.2
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: 0.2
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.15
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.05
+    PD1: ''
+    PNAd: ''
+    Podoplanin: 0.2
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.3
+  LN0027_1VL5B2_R2:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.4
+    CD11c: 0.83
+    CD138: ''
+    CD14: ''
+    CD140b (PDGRb): 0.4
+    CD15: ''
+    CD16: ''
+    CD163: ''
+    CD19: ''
+    CD1C: ''
+    CD20: 0.99
+    CD206: ''
+    CD21: ''
+    CD25: ''
+    CD3: ''
+    CD31: 0.35
+    CD34: 0.35
+    CD35: 0.45
+    CD4: ''
+    CD4 Cy7: ''
+    CD45: ''
+    CD45RA: 0.999
+    CD45RO: ''
+    CD56: 0.5
+    CD62L: ''
+    CD68: 0.35
+    CD73: ''
+    CD79a: ''
+    CD8: 0.7
+    CD90: 0.35
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: ''
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.25
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: ''
+    PD1: ''
+    PNAd: ''
+    Podoplanin: ''
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.35
+  LN0027_1VL5B2_R3:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.15
+    CD11c: 0.4
+    CD138: ''
+    CD14: ''
+    CD140b (PDGRb): 0.3
+    CD15: 0.1
+    CD16: ''
+    CD163: ''
+    CD19: 0.15
+    CD1C: ''
+    CD20: 0.3
+    CD206: ''
+    CD21: ''
+    CD25: 0.3
+    CD3: 0.2
+    CD31: 0.3
+    CD34: 0.4
+    CD35: 0.3
+    CD4: ''
+    CD4 Cy7: ''
+    CD45: 0.05
+    CD45RA: 0.2
+    CD45RO: 0.3
+    CD56: 0.2
+    CD62L: ''
+    CD68: 0.2
+    CD73: ''
+    CD79a: ''
+    CD8: 0.15
+    CD90: 0.2
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: 0.25
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.15
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.15
+    PD1: ''
+    PNAd: ''
+    Podoplanin: ''
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.15
+  LN0027_1VL5B2_R4:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.3
+    CD11c: 0.4
+    CD138: 0.9
+    CD14: ''
+    CD140b (PDGRb): 0.3
+    CD15: 0.4
+    CD16: ''
+    CD163: ''
+    CD19: 0.3
+    CD1C: ''
+    CD20: 0.3
+    CD206: ''
+    CD21: 0.9
+    CD25: 0.999
+    CD3: 0.4
+    CD31: 0.6
+    CD34: 0.4
+    CD35: 0.2
+    CD4: 0.1
+    CD4 Cy7: ''
+    CD45: 0.15
+    CD45RA: 0.7
+    CD45RO: 0.4
+    CD56: 0.4
+    CD62L: ''
+    CD68: 0.3
+    CD73: ''
+    CD79a: ''
+    CD8: 0.4
+    CD90: 0.5
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: 0.999
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.2
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.3
+    PD1: 0.999
+    PNAd: ''
+    Podoplanin: 0.35
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.1
+  LN0193_1ITRJL_R1:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.25
+    CD11c: 0.3
+    CD138: ''
+    CD14: ''
+    CD140b (PDGRb): 0.4
+    CD15: 0.3
+    CD16: ''
+    CD163: ''
+    CD19: ''
+    CD1C: ''
+    CD20: 0.6
+    CD206: ''
+    CD21: ''
+    CD25: ''
+    CD3: 0.2
+    CD31: 0.2
+    CD34: 0.15
+    CD35: 0.4
+    CD4: 1.0
+    CD4 Cy7: ''
+    CD45: 0.4
+    CD45RA: 0.4
+    CD45RO: 0.3
+    CD56: 0.2
+    CD62L: ''
+    CD68: 0.5
+    CD73: ''
+    CD79a: ''
+    CD8: 0.3
+    CD90: 0.25
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: ''
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: ''
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.15
+    PD1: ''
+    PNAd: ''
+    Podoplanin: ''
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: ''
+  LN0193_1ITRJL_R2:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: ''
+    CD11c: ''
+    CD138: ''
+    CD14: ''
+    CD140b (PDGRb): ''
+    CD15: ''
+    CD16: ''
+    CD163: ''
+    CD19: ''
+    CD1C: ''
+    CD20: ''
+    CD206: ''
+    CD21: ''
+    CD25: ''
+    CD3: ''
+    CD31: ''
+    CD34: ''
+    CD35: ''
+    CD4: ''
+    CD4 Cy7: ''
+    CD45: ''
+    CD45RA: ''
+    CD45RO: ''
+    CD56: ''
+    CD62L: ''
+    CD68: ''
+    CD73: ''
+    CD79a: ''
+    CD8: ''
+    CD90: ''
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: ''
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: ''
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: ''
+    PD1: ''
+    PNAd: ''
+    Podoplanin: ''
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: ''
+  LN0193_1ITRJL_R3:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.15
+    CD11c: ''
+    CD138: ''
+    CD14: ''
+    CD140b (PDGRb): 0.35
+    CD15: 0.35
+    CD16: ''
+    CD163: ''
+    CD19: 0.25
+    CD1C: ''
+    CD20: 0.3
+    CD206: ''
+    CD21: ''
+    CD25: ''
+    CD3: 0.2
+    CD31: 0.25
+    CD34: 0.25
+    CD35: ''
+    CD4: ''
+    CD4 Cy7: ''
+    CD45: 0.25
+    CD45RA: 0.3
+    CD45RO: 0.25
+    CD56: 0.1
+    CD62L: ''
+    CD68: 0.4
+    CD73: ''
+    CD79a: ''
+    CD8: 0.2
+    CD90: 0.25
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: ''
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: ''
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.15
+    PD1: ''
+    PNAd: ''
+    Podoplanin: ''
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: ''
+  LN0193_1ITRJL_R4:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.15
+    CD11c: 0.25
+    CD138: 1.0
+    CD14: ''
+    CD140b (PDGRb): 0.4
+    CD15: 0.4
+    CD16: ''
+    CD163: ''
+    CD19: 0.2
+    CD1C: ''
+    CD20: 0.25
+    CD206: ''
+    CD21: 1.0
+    CD25: ''
+    CD3: 0.15
+    CD31: 0.2
+    CD34: 0.4
+    CD35: 0.15
+    CD4: 1.0
+    CD4 Cy7: ''
+    CD45: 0.7
+    CD45RA: 0.3
+    CD45RO: 0.15
+    CD56: 0.2
+    CD62L: ''
+    CD68: 0.3
+    CD73: ''
+    CD79a: ''
+    CD8: 0.2
+    CD90: 0.25
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: ''
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: ''
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: ''
+    PD1: ''
+    PNAd: ''
+    Podoplanin: 1.0
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.1
+  LN0438_MAAFHY1_R1:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: ''
+    CD11c: ''
+    CD138: ''
+    CD14: ''
+    CD140b (PDGRb): ''
+    CD15: ''
+    CD16: ''
+    CD163: ''
+    CD19: ''
+    CD1C: ''
+    CD20: ''
+    CD206: ''
+    CD21: ''
+    CD25: ''
+    CD3: ''
+    CD31: ''
+    CD34: ''
+    CD35: ''
+    CD4: ''
+    CD4 Cy7: ''
+    CD45: ''
+    CD45RA: ''
+    CD45RO: ''
+    CD56: ''
+    CD62L: ''
+    CD68: ''
+    CD73: ''
+    CD79a: ''
+    CD8: ''
+    CD90: ''
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: ''
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: ''
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: ''
+    PD1: ''
+    PNAd: ''
+    Podoplanin: ''
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: ''
+  LN0438_MAAFHY1_R2:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.2
+    CD11c: 0.25
+    CD138: 0.2
+    CD14: ''
+    CD140b (PDGRb): 0.15
+    CD15: 0.3
+    CD16: ''
+    CD163: ''
+    CD19: 0.15
+    CD1C: ''
+    CD20: 0.15
+    CD206: ''
+    CD21: ''
+    CD25: 0.25
+    CD3: 0.2
+    CD31: 0.2
+    CD34: 0.25
+    CD35: 0.25
+    CD4: 0.2
+    CD4 Cy7: ''
+    CD45: 0.25
+    CD45RA: 0.2
+    CD45RO: 0.15
+    CD56: 0.3
+    CD62L: ''
+    CD68: 0.2
+    CD73: ''
+    CD79a: ''
+    CD8: 0.25
+    CD90: 0.3
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: 0.15
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.1
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.15
+    PD1: ''
+    PNAd: ''
+    Podoplanin: 0.35
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.25
+  LN0438_MAAFHY1_R3:
+    BCL-2: 0.6
+    BCL-6: 0.2
+    CCL19: 0.3
+    CCR7: 0.3
+    CD10: 0.99
+    CD105: 0.2
+    CD11b: 0.3
+    CD11c: 0.6
+    CD138: 0.3
+    CD14: 0.5
+    CD140b (PDGRb): 0.3
+    CD15: 0.4
+    CD16: 0.5
+    CD163: 0.6
+    CD19: 0.4
+    CD1C: ''
+    CD20: 0.3
+    CD206: 0.999
+    CD21: 0.2
+    CD25: 0.5
+    CD3: 0.4
+    CD31: 0.3
+    CD34: 0.3
+    CD35: 0.35
+    CD4: 0.35
+    CD4 Cy7: ''
+    CD45: 0.3
+    CD45RA: 0.5
+    CD45RO: 0.75
+    CD56: 0.4
+    CD62L: ''
+    CD68: 0.5
+    CD73: 0.5
+    CD79a: 0.5
+    CD8: 0.6
+    CD90: 0.3
+    CXCL12: 0.99
+    CXCL13: ''
+    CXCR3: 0.5
+    CXCR4: 0.999
+    CXCR5: 0.5
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.25
+    Granzyme B: 0.5
+    HLA-DR: 0.9
+    Na/Ka ATPase: ''
+    PAX5: 0.3
+    PD1: 0.99
+    PNAd: 0.999
+    Podoplanin: 0.5
+    TIM3: 0.2
+    alpha-SMA: ''
+    ki-67: 0.3
+  LN0438_MAAFHY3_R1:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.3
+    CD11c: 0.3
+    CD138: 0.2
+    CD14: ''
+    CD140b (PDGRb): 0.2
+    CD15: 0.3
+    CD16: ''
+    CD163: ''
+    CD19: 0.25
+    CD1C: ''
+    CD20: 0.4
+    CD206: ''
+    CD21: 0.4
+    CD25: ''
+    CD3: 0.25
+    CD31: 0.5
+    CD34: 0.4
+    CD35: 0.4
+    CD4: 0.3
+    CD4 Cy7: ''
+    CD45: 0.7
+    CD45RA: 0.4
+    CD45RO: 0.4
+    CD56: 0.9
+    CD62L: ''
+    CD68: 0.3
+    CD73: ''
+    CD79a: ''
+    CD8: 0.2
+    CD90: 0.4
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: ''
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.3
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.3
+    PD1: ''
+    PNAd: ''
+    Podoplanin: 0.4
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.2
+  LN0438_MAAFHY3_R2:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.15
+    CD11c: 0.35
+    CD138: ''
+    CD14: ''
+    CD140b (PDGRb): 0.4
+    CD15: 0.2
+    CD16: ''
+    CD163: ''
+    CD19: 0.8
+    CD1C: ''
+    CD20: 0.3
+    CD206: ''
+    CD21: ''
+    CD25: 0.4
+    CD3: 0.1
+    CD31: 0.25
+    CD34: 0.35
+    CD35: 0.15
+    CD4: 0.15
+    CD4 Cy7: ''
+    CD45: 0.9
+    CD45RA: 0.3
+    CD45RO: 0.37
+    CD56: 0.15
+    CD62L: ''
+    CD68: 0.35
+    CD73: ''
+    CD79a: ''
+    CD8: 0.5
+    CD90: 0.3
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: 0.25
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.1
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.3
+    PD1: ''
+    PNAd: ''
+    Podoplanin: 0.2
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.4
+  LN0438_MAAFHYB_R1:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: 0.3
+    CD11c: 0.4
+    CD138: 0.1
+    CD14: ''
+    CD140b (PDGRb): 0.4
+    CD15: 0.1
+    CD16: ''
+    CD163: ''
+    CD19: 0.4
+    CD1C: ''
+    CD20: 0.4
+    CD206: ''
+    CD21: 0.999
+    CD25: 0.7
+    CD3: 0.3
+    CD31: 0.5
+    CD34: 0.4
+    CD35: 0.4
+    CD4: 0.2
+    CD4 Cy7: ''
+    CD45: 0.4
+    CD45RA: 0.4
+    CD45RO: 0.35
+    CD56: 0.1
+    CD62L: ''
+    CD68: 0.3
+    CD73: ''
+    CD79a: ''
+    CD8: 0.3
+    CD90: 0.4
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: 0.5
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: 0.3
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: 0.4
+    PD1: ''
+    PNAd: ''
+    Podoplanin: 0.4
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: 0.3
+  LN0438_MAAFHYB_R2:
+    BCL-2: ''
+    BCL-6: ''
+    CCL19: ''
+    CCR7: ''
+    CD10: ''
+    CD105: ''
+    CD11b: ''
+    CD11c: 0.9
+    CD138: ''
+    CD14: ''
+    CD140b (PDGRb): ''
+    CD15: ''
+    CD16: ''
+    CD163: ''
+    CD19: ''
+    CD1C: ''
+    CD20: ''
+    CD206: ''
+    CD21: ''
+    CD25: ''
+    CD3: ''
+    CD31: ''
+    CD34: ''
+    CD35: ''
+    CD4: ''
+    CD4 Cy7: ''
+    CD45: ''
+    CD45RA: ''
+    CD45RO: ''
+    CD56: ''
+    CD62L: ''
+    CD68: ''
+    CD73: ''
+    CD79a: ''
+    CD8: ''
+    CD90: ''
+    CXCL12: ''
+    CXCL13: ''
+    CXCR3: ''
+    CXCR4: ''
+    CXCR5: ''
+    Collagen IV: ''
+    DAPI: ''
+    Fibronectin: ''
+    FoxP3: ''
+    Granzyme B: ''
+    HLA-DR: ''
+    Na/Ka ATPase: ''
+    PAX5: ''
+    PD1: ''
+    PNAd: ''
+    Podoplanin: ''
+    TIM3: ''
+    alpha-SMA: ''
+    ki-67: ''
