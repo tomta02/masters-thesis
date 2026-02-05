@@ -4,6 +4,7 @@
 .Rproj.user/
 .slurmR/
 .slurm/
+.ipynb_checkpoints/
 
 omnipathr-log/
 codex/private
