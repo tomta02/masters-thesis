@@ -70,8 +70,11 @@ domcols = c(
   "diffuse_fdc.hi" = "#42D4F4",
   "other" = "#F032E6")
 
+# calculate regression between two variables
+fit = lm(CNV_bp_full ~ maligBfrac, data = v@meta.data)
+r2  = summary(fit)$r.squared
 
-# make scatterpotl
+# make scatterplot
 p = ggplot(v@meta.data, aes(x = maligBfrac, y = CNV_bp_full, color = prelim_growth_2)) +
   geom_point(alpha = 0.4, size = 2)+
   scale_color_manual(values = domcols) +
@@ -82,6 +85,14 @@ p = ggplot(v@meta.data, aes(x = maligBfrac, y = CNV_bp_full, color = prelim_grow
     title = ext,
   ) +
   geom_smooth(method = "lm", color = "black", se = FALSE, linewidth = 0.25) +
+  annotate(
+    "text",
+    x = Inf, y = Inf,
+    label = paste0("R² = ", round(r2, 3)),
+    hjust = 1.1, vjust = 1.5,
+    size = 4,
+    color = "black"
+  ) +
   theme(
   panel.grid.major = element_blank(),
   panel.grid.minor = element_blank(),
@@ -90,7 +101,7 @@ p = ggplot(v@meta.data, aes(x = maligBfrac, y = CNV_bp_full, color = prelim_grow
 
 
 ggsave(
-  paste0("/g/saka/Tatjana/data/05_plots/scatterplots_malig_b_vs_cnv_burden_per_spot/", ext, "_scatter.png"),
+  paste0("/g/saka/Tatjana/data/05_plots/scatterplots_malig_b_vs_cnv_burden_per_spot_with_R2/", ext, "_scatter.png"),
   p,
   width = 8,
   height = 4,
