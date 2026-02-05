@@ -6,7 +6,8 @@
 .slurm/
 
 omnipathr-log/
-codex/
+codex/private
+codex/scripts/private
 visium/messy_scripts/
 visium/analysis_1.Rproj
 visium/01_CNV_calling/krimskrams/
